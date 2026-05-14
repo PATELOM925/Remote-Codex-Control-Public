@@ -1,0 +1,24 @@
+{
+  "name": "remote-codex-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram-first remote supervision daemon for Codex",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx tests/rcc.integration.test.ts",
+    "start": "node --import tsx src/main.ts",
+    "web:check": "node scripts/check-web-static.mjs",
+    "relay:check": "node --check api/relay.js",
+    "secrets:check": "node scripts/no-secret-scan.mjs",
+    "smoke:runtime": "node scripts/smoke-runtime.mjs",
+    "verify:quick": "node scripts/verify-quick.mjs",
+    "launchd:check": "node scripts/check-launchd.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

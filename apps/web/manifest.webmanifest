@@ -1,0 +1,10 @@
+{
+  "name": "RCC Web Console",
+  "short_name": "RCC Web",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08130f",
+  "theme_color": "#102019",
+  "description": "RCC console for Local RCC API and Remote Relay supervision."
+}

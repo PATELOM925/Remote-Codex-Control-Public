@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#102019" />
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2308130f'/%3E%3Ctext x='8' y='44' font-family='Arial,sans-serif' font-size='26' font-weight='900' fill='%23fff5dc'%3ERCC%3C/text%3E%3C/svg%3E" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <title>RCC Web Console</title>
+  <link rel="stylesheet" href="./styles.css?v=20260504-sidebarcollapse1" />
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <a class="brand-link" href="/">RCC</a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="#connect" data-section-link="connect">Connect</a>
+        <a href="#quick-setup" data-section-link="quick-setup">Setup</a>
+        <a href="https://github.com/PATELOM925/Remote-Codex-Control" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <section class="hero landing-section">
+      <div class="hero-copy">
+        <p class="eyebrow">Remote Codex Control</p>
+        <h1><span class="hero-line">Control your Codex from anywhere.</span></h1>
+        <p class="lead">Approve, steer, inspect live progress, and request artifacts without exposing your Mac as a cloud machine. Telegram remains the fastest path; this web console adds a browser/PWA control surface.</p>
+        <div class="actions">
+          <a class="button" href="#connect" data-section-link="connect">Connect to RCC</a>
+          <a class="button ghost" href="#connect" data-mode-link="relay">Use Remote Relay</a>
+        </div>
+      </div>
+
+      <section id="connect" class="panel connect-card">
+        <div>
+          <p class="eyebrow">Connect first</p>
+          <h2>Connect to RCC</h2>
+          <p class="muted">Away from your Mac? Use <strong>Remote Relay</strong>. Same device or trusted network? Use <strong>Local RCC API</strong>.</p>
+        </div>
+        <form id="connectForm" class="connect-form">
+          <fieldset class="mode-picker" aria-describedby="modeHelp">
+            <legend>Connection mode</legend>
+            <label class="mode-option">
+              <input type="radio" name="mode" value="relay" />
+              <span><strong>Remote Relay</strong><small>Phone/browser talks to Vercel; your Mac polls safely outbound.</small></span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="mode" value="local" />
+              <span><strong>Local API</strong><small>This browser can directly reach the Mac daemon.</small></span>
+            </label>
+          </fieldset>
+          <p id="modeHelp" class="mode-help muted">Pick a mode to see the shortest setup path.</p>
+
+          <div id="relayFields" class="field-group" hidden>
+            <label for="relayBaseUrl">Relay base URL</label>
+            <input id="relayBaseUrl" name="relayBaseUrl" placeholder="Leave blank for this hosted site" autocomplete="off" inputmode="url" />
+            <label for="relayToken">Relay operator token</label>
+            <input id="relayToken" name="relayToken" type="password" placeholder="RCC_RELAY_OPERATOR_TOKEN" autocomplete="new-password" autocapitalize="off" spellcheck="false" />
+            <p class="muted small-copy">Use the operator relay token. Do not paste your Codex password, Supabase key, Telegram token, or Mac relay token here.</p>
+          </div>
+
+          <div id="localFields" class="field-group">
+            <label for="localBaseUrl">Local RCC API base URL</label>
+            <input id="localBaseUrl" name="localBaseUrl" value="http://127.0.0.1:4765" autocomplete="off" inputmode="url" />
+            <label for="localToken">RCC web token</label>
+            <input id="localToken" name="localToken" type="password" placeholder="RCC_WEB_AUTH_TOKEN" autocomplete="new-password" autocapitalize="off" spellcheck="false" />
+            <p class="muted small-copy">Use this only when the browser can reach the Mac daemon directly.</p>
+          </div>
+
+          <button id="connectButton" type="submit">Connect to RCC</button>
+        </form>
+        <pre id="sessionResult">Not connected.</pre>
+      </section>
+    </section>
+
+    <section class="notice landing-section">
+      <strong>Your Codex login stays on your Mac.</strong> This site never receives your OpenAI/Codex password and does not run Codex on Vercel. RCC talks to Codex through the local Codex App Server. Remote Relay only carries redacted snapshots and queued operator commands to the RCC daemon already running on your Mac.
+    </section>
+
+    <section id="quick-setup" class="panel quick-setup landing-section">
+      <div>
+        <p class="eyebrow">Quick Web Setup</p>
+        <h2>Install RCC, generate the token, start the Mac daemon.</h2>
+        <p class="muted">The relay token is not inside the website. Your Mac creates it locally, saves it under <code>.dist/backups/</code>, and can copy it to your clipboard.</p>
+      </div>
+      <ol>
+        <li>On the Mac: <code>git clone https://github.com/PATELOM925/Remote-Codex-Control.git && cd Remote-Codex-Control && npm install</code></li>
+        <li>Add your Telegram bot token and operator chat id to <code>setup.md</code>.</li>
+        <li>Generate relay tokens and apply Mac settings: <code>./scripts/setup_relay_quickstart.sh --configure-vercel --deploy</code></li>
+        <li>Run the Runtime smoke check before demoing phone access: set <code>RCC_RELAY_OPERATOR_TOKEN</code> in your shell, then run <code>npm run smoke:runtime</code></li>
+        <li>Start RCC: <code>./run.sh</code></li>
+        <li>On your phone: open <code>rcc-magnus-alpha.vercel.app/?mode=relay</code>, leave base URL blank, and paste the copied operator token.</li>
+      </ol>
+    </section>
+
+    <section class="grid landing-section">
+      <article>
+        <h2>Remote Relay</h2>
+        <ul>
+          <li>Best for phone/bus access</li>
+          <li>Mac polls outbound, so no public Mac port</li>
+          <li>Queue run, say, interrupt, approve, deny, and small selected-thread file uploads</li>
+          <li>Open a thread for explicit live detail</li>
+        </ul>
+      </article>
+      <article>
+        <h2>Local API</h2>
+        <ul>
+          <li>Fastest if browser reaches the Mac daemon</li>
+          <li>Direct run, steer, interrupt, approvals</li>
+          <li>Explicit local artifact download</li>
+          <li>Uses your private RCC web token</li>
+        </ul>
+      </article>
+      <article>
+        <h2>Safety model</h2>
+        <ul>
+          <li>Same local Codex account</li>
+          <li>No Codex OAuth inside this website</li>
+          <li>No full-disk browser</li>
+          <li>No cloud Codex execution</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="app-console" id="dashboard" hidden>
+      <header class="app-header panel">
+        <div>
+          <p class="eyebrow">Connected workspace</p>
+          <h2>RCC control room</h2>
+          <p class="muted">Pick a project, open a thread, then approve, steer, attach files, and inspect live output from one focused surface.</p>
+        </div>
+        <div class="app-actions">
+          <span id="modeBadge" class="tag">Local RCC API</span>
+          <div id="relayState" class="relay-state"><span class="status-dot idle"></span><span>No queued web command.</span></div>
+          <button id="refreshButton" class="small" type="button">Refresh</button>
+          <a class="button ghost small-link" href="#connect">Change connection</a>
+          <small id="lastRefreshText" class="muted">Not refreshed yet.</small>
+        </div>
+      </header>
+
+      <nav class="app-subnav panel" aria-label="RCC workspace sections">
+        <a href="?view=workspace#app" data-app-section="workspace">Workspace</a>
+        <a href="?view=approvalsSection#app" data-app-section="approvalsSection">Approvals</a>
+        <a href="?view=artifactsSection#app" data-app-section="artifactsSection">Artifacts</a>
+        <a href="?view=eventsSection#app" data-app-section="eventsSection">Events</a>
+        <a href="?view=healthSection#app" data-app-section="healthSection">Health</a>
+        <a href="?view=setupSection#app" data-app-section="setupSection">Setup</a>
+      </nav>
+
+      <div id="relayFreshnessBanner" class="notice relay-banner" hidden></div>
+
+      <section id="workspace" class="workspace-shell">
+        <div id="workspaceSidebar" class="workspace-sidebar-stack">
+          <aside class="panel project-sidebar">
+            <div class="sidebar-static">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Projects</p>
+                  <h2>Allowlisted workspaces</h2>
+                </div>
+                <button id="threadCatalogRefresh" class="small" type="button">Refresh projects</button>
+              </div>
+              <p class="muted small-copy">Click a project to filter its Codex threads. RCC can only act inside allowlisted or safely imported project roots.</p>
+              <label class="search-label" for="projectSearch">Search projects</label>
+              <input id="projectSearch" placeholder="Search projects, paths, or ids..." autocomplete="off" />
+              <p id="threadCatalogMeta" class="muted small-copy">Connect first to load projects and threads.</p>
+            </div>
+            <div id="projects" class="cards project-list sidebar-scroll"></div>
+          </aside>
+        </div>
+
+        <article class="panel codex-shell" id="liveThreadPanel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Selected thread workspace</p>
+              <h2 id="liveThreadTitle">Open a thread</h2>
+              <p id="selectedThreadSummary" class="muted">Select a project, then open a thread. RCC loads detailed output only for the selected thread, not every transcript.</p>
+            </div>
+            <div class="panel-actions">
+              <button id="workspaceSidebarToggle" class="small secondary" type="button" aria-controls="workspaceSidebar" aria-expanded="true">Hide sidebar</button>
+              <button id="liveThreadRefresh" class="small" type="button">Refresh thread</button>
+            </div>
+          </div>
+
+          <section id="codexOutputPanel" class="output-panel is-empty">
+            <div class="panel-subhead">
+              <h3>Codex output</h3>
+              <span id="liveOutputMeta" class="tag">idle</span>
+            </div>
+            <div id="threadOutputs" class="cards output-stream"></div>
+          </section>
+
+          <section id="reasoningPanel" class="output-panel reasoning-panel is-empty">
+            <div class="panel-subhead">
+              <div>
+                <h3>Reasoning Summary</h3>
+                <p class="muted small-copy">App Server-exposed summary. RCC does not display hidden chain-of-thought.</p>
+              </div>
+              <span id="reasoningMeta" class="tag">summary</span>
+            </div>
+            <div id="reasoningSummaries" class="cards reasoning-stream"></div>
+          </section>
+
+          <section id="finalOutputPanel" class="output-panel final-panel">
+            <div class="panel-subhead">
+              <h3>Final output</h3>
+              <span class="tag">latest</span>
+            </div>
+            <div id="finalOutputs" class="cards"></div>
+          </section>
+
+          <section class="composer-shell" aria-labelledby="composerTitle">
+            <div class="composer-toolbar">
+              <div>
+                <p class="eyebrow">Composer</p>
+                <h3 id="composerTitle">Message selected thread</h3>
+                <p id="composerStateHint" class="muted small-copy">Select a thread to unlock messaging.</p>
+              </div>
+              <div class="mode-toggle" role="group" aria-label="Composer mode">
+                <button id="planModeButton" type="button" class="toggle active" data-mode="plan">Plan</button>
+                <button id="buildModeButton" type="button" class="toggle" data-mode="build">Build</button>
+              </div>
+            </div>
+
+            <div class="skill-row" aria-label="Skill picker hooks">
+              <div class="skill-search-row">
+                <label class="skill-picker-label" for="skillSearch">Search skills</label>
+                <input id="skillSearch" type="search" placeholder="Search returned Codex skills..." autocomplete="off" />
+              </div>
+              <div id="skillChips" class="skill-chips" aria-live="polite"></div>
+              <p id="skillHelp" class="muted small-copy">Open a thread to load skills from the local Codex App Server.</p>
+            </div>
+
+            <form id="composerForm" class="composer-form">
+              <div class="turn-controls" aria-label="Next turn controls">
+                <label>Model
+                  <select id="composerModel">
+                    <option value="">Current Codex default</option>
+                    <option value="gpt-5.5">GPT-5.5</option>
+                    <option value="gpt-5.4">GPT-5.4</option>
+                    <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                  </select>
+                </label>
+                <label>Reasoning
+                  <select id="composerReasoning">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="xhigh">Extra High</option>
+                  </select>
+                </label>
+                <label>Speed preset
+                  <select id="composerSpeed">
+                    <option value="balanced">Balanced</option>
+                    <option value="fast">Fast</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                </label>
+              </div>
+              <p class="muted small-copy">Model/reasoning apply only to a new run or plan. Steering never sends unsupported turn-level overrides.</p>
+              <label for="composerInput">Instruction for selected thread</label>
+              <textarea id="composerInput" placeholder="Ask Codex to continue, steer, or run the selected thread. This input keeps focus during refresh."></textarea>
+              <p id="steerConfirm" class="confirm-hint" hidden>Codex is already running. Press <strong>Steer / queue</strong> again to send this as steering guidance to the active turn.</p>
+              <p id="composerProgress" class="muted small-copy" aria-live="polite"></p>
+              <div class="attachment-row">
+                <label class="attachment-picker" for="attachmentInput">Attach files</label>
+                <input id="attachmentInput" type="file" multiple />
+                <div id="attachmentsPreview" class="attachment-preview" aria-live="polite">No attachments selected.</div>
+              </div>
+              <div class="row-actions composer-actions">
+                <button type="submit" id="composerSendButton">Run</button>
+                <button type="button" id="lastOutputButton" class="secondary">Show last output</button>
+                <button type="button" id="composerInterruptButton" data-action="interrupt" class="danger">Interrupt</button>
+              </div>
+            </form>
+          </section>
+
+          <section id="threadEventsPanel" class="output-panel">
+            <h3>Thread events</h3>
+            <div id="threadEvents" class="cards compact"></div>
+          </section>
+        </article>
+      </section>
+
+      <section id="approvalsSection" class="panel section-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Approval inbox</p>
+            <h2>Approvals</h2>
+          </div>
+        </div>
+        <div id="approvals" class="cards approval-list"></div>
+        <div class="approval-history-block">
+          <h3>Approval history</h3>
+          <div id="approvalHistory" class="cards compact"></div>
+        </div>
+      </section>
+
+      <aside id="approvalDrawer" class="approval-drawer" aria-live="polite" aria-label="Approval details drawer" hidden>
+        <div class="drawer-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Approval details</p>
+              <h2 id="approvalDrawerTitle">No approval selected</h2>
+            </div>
+            <button id="approvalDrawerClose" class="small secondary" type="button">Close</button>
+          </div>
+          <pre id="approvalDrawerBody">Select Details on an approval.</pre>
+        </div>
+      </aside>
+
+      <section id="artifactsSection" class="panel section-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Artifacts</p>
+            <h2>Requested outputs</h2>
+          </div>
+        </div>
+        <div id="artifacts" class="cards artifact-list"></div>
+      </section>
+
+      <section id="eventsSection" class="panel section-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Live mirror</p>
+            <h2>Recent events</h2>
+          </div>
+        </div>
+        <div id="events" class="cards compact"></div>
+      </section>
+
+      <section id="healthSection" class="panel section-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Health</p>
+            <h2>Session and transport</h2>
+          </div>
+        </div>
+        <div id="sessionPanel" class="session-panel"></div>
+        <div id="healthPanel" class="health-grid"></div>
+        <div id="counts" class="count-grid"></div>
+      </section>
+
+      <section id="setupSection" class="panel section-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Quick Web Setup</p>
+            <h2>One Mac command, then connect from phone.</h2>
+          </div>
+        </div>
+        <ol>
+          <li>Install from GitHub: <code>git clone https://github.com/PATELOM925/Remote-Codex-Control.git && cd Remote-Codex-Control && npm install</code></li>
+          <li>Add your Telegram values to <code>setup.md</code>.</li>
+          <li>Run <code>./scripts/setup_relay_quickstart.sh --configure-vercel --deploy</code>.</li>
+          <li>Run the Runtime smoke check: set <code>RCC_RELAY_OPERATOR_TOKEN</code> in your shell, then run <code>npm run smoke:runtime</code>.</li>
+          <li>Start the Mac daemon with <code>./run.sh</code> and keep the Mac awake.</li>
+          <li>Open this hosted page on your phone, choose Remote Relay, leave base URL blank, and paste the generated operator token.</li>
+        </ol>
+      </section>
+    </section>
+  </main>
+  <script src="./app.js?v=20260504-sidebarcollapse1"></script>
+</body>
+</html>

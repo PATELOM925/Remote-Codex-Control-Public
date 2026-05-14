@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Runtime/local state
+.dist/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+logs/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+setup.md
+.codex/
+.vercel/
+STATUS_SNAPSHOT.md
+
+# OS/editor noise
+.DS_Store
+**/.DS_Store
+
+# Local runtime QA screenshots and debug snapshots
+test_images/
