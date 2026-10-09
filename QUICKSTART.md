@@ -5,7 +5,7 @@ This is the shortest successful path after installation.
 ## 1. Start RCC
 
 ```bash
-cd /path/to/Remote-Codex-Control
+cd /path/to/Remote-Codex-Control-Public
 npm run verify:quick
 ./run.sh
 ```

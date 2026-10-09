@@ -86,4 +86,4 @@ Manual review required:
 
 ## Disclosure
 
-This project is early-stage. If you find a security issue, do not publish exploit details first. Open a private issue or contact the maintainer. Replace this section with a project-specific security contact before broad public release.
+This project is early-stage. If you find a security issue, do not publish exploit details first. Report it by email to `iampatelom@gmail.com` with the subject line "RCC security". Do not open a public issue for a vulnerability. Expect a reply within 7 days.

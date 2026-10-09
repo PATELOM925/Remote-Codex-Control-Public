@@ -24,8 +24,8 @@ If `node:sqlite` fails, install a newer Node.js runtime before starting RCC.
 ## Install Dependencies
 
 ```bash
-git clone https://github.com/PATELOM925/Remote-Codex-Control.git
-cd Remote-Codex-Control
+git clone https://github.com/PATELOM925/Remote-Codex-Control-Public.git
+cd Remote-Codex-Control-Public
 npm install
 npm run verify:quick
 ```

@@ -88,7 +88,7 @@ Remove:
 Runner shape:
 
 ```bash
-cd /path/to/Remote-Codex-Control
+cd /path/to/Remote-Codex-Control-Public
 /usr/bin/caffeinate -i -m -s ./run.sh
 ```
 
