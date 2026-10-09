@@ -7,7 +7,7 @@ const strict = (process.env.RCC_SMOKE_STRICT ?? 'false').toLowerCase() === 'true
 
 const results = [];
 const env = {
-  relayEnabled: (process.env.RCC_RELAY_ENABLED ?? 'true').toLowerCase() === 'true',
+  relayEnabled: (process.env.RCC_RELAY_ENABLED ?? 'false').toLowerCase() === 'true',
   webUrl: stripTrailingSlash(process.env.RCC_SMOKE_WEB_URL || process.env.RCC_RELAY_BASE_URL || DEFAULT_WEB_URL),
   relayBaseUrl: stripTrailingSlash(process.env.RCC_SMOKE_RELAY_BASE_URL || process.env.RCC_RELAY_BASE_URL || DEFAULT_WEB_URL),
   relayToken: process.env.RCC_RELAY_OPERATOR_TOKEN || '',
