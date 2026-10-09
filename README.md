@@ -18,6 +18,8 @@ Coding agents stop and ask before they run commands or change files. If the pers
 
 ## Demo without credentials
 
+Watch it in a browser: [iampatelom.com/demos/remote-codex-control](https://iampatelom.com/demos/remote-codex-control) replays the session below step by step.
+
 This replays an operator session against the daemon with mock Codex and Telegram clients. It needs no bot token, no Codex install, and no network.
 
 ```bash
