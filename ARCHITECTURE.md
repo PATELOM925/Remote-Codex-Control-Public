@@ -98,6 +98,7 @@ Approval states:
 - `denied`
 - `expired`
 - `superseded`
+- `dismissed`
 
 Attachment states:
 

@@ -21,6 +21,7 @@
 - `current_model` TEXT
 - `current_effort` TEXT
 - `active_turn_id` TEXT
+- `queued_instruction` TEXT
 - `last_seen_at` TEXT
 - `created_at` TEXT NOT NULL
 
@@ -74,6 +75,21 @@
 - `summary` TEXT
 - `created_at` TEXT NOT NULL
 - `resolved_at` TEXT
+
+### event_log
+Append-only journal of daemon events, with the project, thread, and turn IDs and a JSON payload.
+
+### idempotency_keys
+Keys for commands and callbacks already handled. A repeated key is ignored.
+
+### stream_checkpoints
+The last event ID read for each named stream, so a reader can resume.
+
+### health_snapshots
+Periodic health records: daemon alive, Codex transport, freshness, and sleep prevention state.
+
+### model_policy_overrides
+The model and reasoning effort queued for a thread's next turn.
 
 ## Index recommendations
 - `threads(project_id, status)`
