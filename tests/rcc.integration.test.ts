@@ -2054,7 +2054,7 @@ test('/threads falls back to local desktop state when app-server thread/list is 
   await daemon.start();
 
   try {
-    const projectRoot = path.join(baseDir, 'barlens');
+    const projectRoot = path.join(baseDir, 'demo-app');
     fs.mkdirSync(projectRoot, { recursive: true });
     desktop.insertThread({
       codexThreadId: '019dc24b-7e7c-70c2-a389-0ed243129875',
@@ -2159,7 +2159,7 @@ test('approval request for unmapped thread falls back to local desktop state whe
   await daemon.start();
 
   try {
-    const projectRoot = path.join(baseDir, 'barlens');
+    const projectRoot = path.join(baseDir, 'demo-app');
     fs.mkdirSync(projectRoot, { recursive: true });
     const codexThreadId = '019dc24b-7e7c-70c2-a389-0ed243129875';
     desktop.insertThread({
@@ -2171,7 +2171,7 @@ test('approval request for unmapped thread falls back to local desktop state whe
     appServerClient.setListThreadsError('Request timed out: thread/list');
 
     appServerClient.emitApprovalRequest({
-      requestId: 'req-barlens-approval',
+      requestId: 'req-demo-app-approval',
       codexThreadId,
       actionType: 'command',
       summary: 'Plan mode approval',
