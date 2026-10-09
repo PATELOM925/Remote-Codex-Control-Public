@@ -1,128 +1,208 @@
 # Remote Codex Control (RCC)
 
-RCC is a local-first remote supervision layer for Codex running on your Mac. The public alpha lets one trusted operator use a private Telegram bot to inspect Codex threads, steer work, handle approvals, attach files to a selected thread, and retrieve explicit artifacts while execution stays on the local machine.
+RCC is a Telegram bot and a local daemon. It lets one operator watch, steer, and approve the actions of Codex coding agents that run on their own Mac.
 
-RCC is not a hosted coding platform, remote desktop, cloud Codex runner, or multi-user SaaS. For this public branch, Telegram is the documented operator surface. Web and relay code exists in the repository, but it is experimental and not part of the public setup path yet.
+## Why it matters
 
-## Public Alpha Scope
+Coding agents stop and ask before they run commands or change files. If the person who started the task is away from the desk, the task waits. RCC sends each request to the operator's private Telegram chat with the project, thread, and action, so the operator can approve or deny it from a phone. The code and the files stay on the Mac.
 
-Working now:
+## At a glance
 
-- One Mac, one trusted operator, one private Telegram bot.
-- Codex execution remains local through Codex App Server.
-- Telegram long polling for `/status`, `/projects`, `/threads`, `/pick`, `/run`, `/say`, `/last`, `/approvals`, `/approve`, `/deny`, `/attach`, and `/artifact` flows.
-- Strict Telegram chat allowlist using `RCC_OPERATOR_CHAT_ID` and `RCC_ALLOWED_CHAT_IDS`.
-- Local SQLite state under `.dist/` with WAL mode.
-- Thread-scoped uploads and explicit artifact sends.
-- Approval records with project/thread/action context and stale/superseded callback protection.
-- Model and reasoning-effort selections for the next turn, not unsafe mid-action mutation.
-- `Reasoning Summary` only when Codex App Server exposes summary events. RCC does not expose hidden chain-of-thought.
+- About 17,200 lines of TypeScript in 50 files. 13,663 lines are in `src/`. 3,533 lines are in one integration test file.
+- 81 test cases. All 81 pass on macOS with Node 22.
+- 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
+- 21 commands registered with the Telegram bot menu at startup.
+- 5 policy checks: project allowlist, branch push, model switch, attachment path, and artifact send.
+- 0 npm packages in a `dependencies` block. The application code imports only Node.js built-in modules. The start and test scripts use `tsx` and TypeScript, which are dev dependencies.
+- MIT license.
 
-Prototype or experimental:
+## Demo without credentials
 
-- Local web console in `apps/web`.
-- Hosted relay in `api/relay.js` and `supabase/rcc_relay_schema.sql`.
-- Desktop UI approval automation fallback.
-- Git commit/push workflows from Telegram.
-
-Roadmap:
-
-- Multi-user/RBAC.
-- Cloud execution.
-- Native mobile apps.
-- Non-Codex agent backends.
-- Full transcript mirroring for every thread.
-
-## Quick Install
+This replays an operator session against the daemon with mock Codex and Telegram clients. It needs no bot token, no Codex install, and no network.
 
 ```bash
-git clone https://github.com/PATELOM925/Remote-Codex-Control.git
-cd Remote-Codex-Control
-npm install
-npm run verify:quick
-cp setup.example.md setup.md
+npm ci && npm run demo
 ```
-
-Edit `setup.md` with your own Telegram bot token and chat ID, then start RCC:
-
-```bash
-./run.sh
-```
-
-Open your private Telegram bot and send:
 
 ```text
-/status
-/threads 10
-/pick 1
-/last
+operator> /status
+rcc> RCC Status
+     Daemon: alive
+     Codex Transport: connected
+     ...
+
+operator> /projects
+rcc> Projects (1)
+     1. demo-app | ~/demo-app
+
+operator> /new 1 Demo thread
+rcc> Running
+     ...
+     Codex ID: <id-2>
+
+operator> /approval_demo
+rcc> Demo approval triggered for Demo thread
+     Approval ID: <id-3>
+     ...
+     Actions: /approve <id-3> | /deny <id-3> | /approval <id-3>
+
+operator> /approvals
+rcc> Approvals
+     Pending actionable: 1
+     1. <id-3>
+     ...
+
+operator> /approve <id-3>
+rcc> Approval resolved
+     ...
+     Approved request <id-3>
+
+operator> /approve <id-3>
+rcc> Callback already processed: approve:<id-3>
+
+operator> /deny <id-3>
+rcc> Request <id-3> already approved
+
+operator> /approve does-not-exist
+rcc> Command failed: Unknown approval does-not-exist
+
+- Approval routing: a demo approval card reaches the operator chat, and /approve or /deny resolves it by ID.
+- Idempotent callbacks: a repeated /approve is answered as already processed and does not act twice.
+- Stale or unknown approvals are rejected: a resolved request cannot change, and an unknown ID gets an error.
 ```
 
-## Telegram Setup Summary
+Random IDs, times, and ages show as placeholders such as `<id-1>`, `<time>`, and `<age>`. The temp folder shows as `<tmp>`. `...` marks trimmed lines.
 
-1. Create a Telegram bot with BotFather.
-2. Copy the bot token into `setup.md` as `RCC_TELEGRAM_BOT_TOKEN`.
-3. Send `/start` to your bot.
-4. Run `./scripts/telegram_chat_ids.sh 30` to discover your numeric chat ID.
-5. Put that ID in both `RCC_OPERATOR_CHAT_ID` and `RCC_ALLOWED_CHAT_IDS`.
-6. Start RCC with `./run.sh`.
+## How it works
 
-See [Install](./INSTALL.md) and [Setup Reference](./docs/SETUP_REFERENCE.md) for exact values and troubleshooting.
-
-## Safety Defaults
-
-Keep these defaults unless you know why you are changing them:
-
-```bash
-RCC_TELEGRAM_TRANSPORT=long_polling
-RCC_STRICT_SECURITY_DEFAULTS=true
-RCC_APPROVAL_STRATEGY=appserver_then_ui
-RCC_UI_AUTOMATION_ENABLED=false
-RCC_WEB_CONTROL_ENABLED=false
-RCC_RELAY_ENABLED=false
+```mermaid
+flowchart LR
+  op["Operator phone<br/>Telegram app"] --> tg["Telegram Bot API<br/>long polling"]
+  tg --> ta["telegramBotApiClient.ts"]
+  ta --> cs["telegramCommandService.ts<br/>chat allowlist"]
+  cs --> br["codexBridgeAgent.ts"]
+  br -->|"JSON-RPC over stdio"| ca["codex app-server<br/>on this Mac"]
+  ca -->|"approval requests"| ar["approvalRouterAgent.ts"]
+  ar --> pe["policyEngine.ts"]
+  ar -->|"approval card"| tg
+  br --> db[("SQLite WAL<br/>eventJournal.ts")]
 ```
 
-Do not commit `setup.md`, `.env`, `.dist/`, SQLite files, logs, runtime screenshots, bot tokens, chat IDs, relay tokens, or generated private artifacts.
+- `src/adapters/telegram/telegramBotApiClient.ts` polls the Telegram Bot API with `getUpdates` and sends replies back.
+- `src/services/telegramCommandService.ts` drops any update from a chat that is not on the allowlist. It then parses commands such as `/run`, `/say`, and `/approve`.
+- `src/adapters/codex/codexAppServerClient.ts` starts `codex app-server --listen stdio://`. It writes newline-delimited JSON-RPC messages, such as `turn/start`, `turn/steer`, and `turn/interrupt`.
+- `src/agents/codexBridgeAgent.ts` starts and resumes Codex threads. At startup it checks that the App Server supports the 8 methods it needs.
+- `src/agents/approvalRouterAgent.ts` adds project and thread context to each approval. It rejects expired or superseded approvals. It answers a repeated button press without acting on it twice.
+- `src/policies/policyEngine.ts` runs the policy checks. The artifact, attachment, git, and model-switch code paths call it.
+- `src/db/database.ts` and `src/event-journal/eventJournal.ts` store operator-visible state in SQLite. The database runs in WAL mode.
+- `src/utils/redaction.ts` masks secret-looking text before the bridge and the local status page show it.
 
-## Documentation
+## Tech stack
 
-- [Install](./INSTALL.md) - local Telegram setup.
-- [Quickstart](./QUICKSTART.md) - first Telegram demo run.
-- [Examples](./EXAMPLES.md) - common operator flows.
-- [Architecture](./ARCHITECTURE.md) - daemon, Telegram, Codex, state, and trust boundaries.
-- [Architecture Diagram](./docs/ARCHITECTURE_DIAGRAM.md) - Mermaid diagrams and boundaries.
-- [Telegram Bot Spec](./TELEGRAM_BOT_SPEC.md) - supported command contract.
-- [Setup Reference](./docs/SETUP_REFERENCE.md) - every public `setup.md` key explained.
-- [Security](./SECURITY.md) - threat model and required controls.
-- [Contributing](./CONTRIBUTING.md) - contribution rules and verification.
-- [Maintainer Notes](./docs/MAINTAINER_NOTES.md) - experimental web/relay code boundary.
+- Language and runtime: TypeScript 5.9 on Node.js. Tests run with `node:test` through `tsx`.
+- Codex integration: Codex App Server over JSON-RPC on stdio, the default mode.
+- Operator interface: Telegram Bot API, long polling, over `fetch`.
+- State: SQLite through `node:sqlite`, in WAL mode.
+- Local status page: a small HTTP server bound to `127.0.0.1`.
+- Experimental: a static web console in `apps/web`, a relay function in `api/relay.js`, and a Supabase schema in `supabase/rcc_relay_schema.sql`.
+- Optional always-on mode: a macOS LaunchAgent with `caffeinate`, from `scripts/install-launchd.sh`.
 
-## Verification
+## Run it
 
-For docs and runtime sanity:
+Tested on macOS with Node 22:
 
 ```bash
+git clone https://github.com/PATELOM925/Remote-Codex-Control-Public.git
+cd Remote-Codex-Control-Public
+npm ci
+npm run typecheck
+npm run build
+npm test
 npm run verify:quick
-npm run secrets:check
-git status --short
 ```
 
-For a real Telegram smoke test:
+A local run with no Telegram bot and no Codex App Server. Codex and Telegram are both replaced by mock clients:
 
-```text
-/status
-/projects
-/threads 10
-/pick 1
-/where
-/last
-/approvals
+```bash
+HOME="$(mktemp -d)" \
+RCC_TELEGRAM_TRANSPORT=disabled \
+RCC_CODEX_CONNECTION_MODE=mock \
+RCC_OPERATOR_CHAT_ID=local-test \
+RCC_LOCAL_STATUS_PORT=4799 \
+RCC_RELAY_ENABLED=false \
+node --import tsx src/main.ts
+
+curl http://127.0.0.1:4799/api/health
 ```
 
-## Public Claim Boundary
+Set `HOME` to an empty folder, as shown, so the thread list does not read your real `~/.codex` history. The daemon creates a `.dist/` folder inside the repo. That folder is git-ignored.
 
-Use this wording publicly:
+The real flow needs two more things:
 
-> RCC lets a trusted operator supervise local Codex from Telegram while execution, credentials, files, approvals, and state stay on the Mac.
+- The real Telegram flow needs `setup.md` with a bot token from BotFather and your numeric chat ID. Then run `./run.sh`. `run.sh` exits with an error if `setup.md` is missing.
+- A real Codex session needs the Codex app or CLI installed and signed in on the Mac.
 
-Do not claim hosted cloud execution, raw hidden reasoning access, production relay reliability, multi-user support, or unlimited artifact delivery.
+## Tests
+
+`npm test` runs the 81 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
+
+- Unknown chats are rejected (line 1189).
+- A git push to `main` is blocked (line 1037).
+- Stale approvals expire, and duplicate callbacks are idempotent (lines 1610 and 2552).
+- Superseded approvals are rejected (line 3225).
+- Attachment names with path traversal stay inside the thread folder (line 296).
+- Artifact sends re-check that the file is inside the artifact root (line 2932).
+- Secret-looking text is redacted (line 3133).
+- The local status server refuses a non-local bind address (line 1015).
+
+There is no CI workflow in this repo. The tests run only when you run them.
+
+## Security model
+
+The design assumes one trusted operator, one trusted Mac user session, one private Telegram bot, and an allowlist of chat IDs. It treats Telegram messages, uploaded files, generated artifacts, and model output as untrusted.
+
+Main controls:
+
+- Only allowlisted chat IDs can send commands.
+- An uploaded file goes to a selected or named thread. It is stored under that thread's folder.
+- Artifacts are listed first. A file is sent only when you ask for it by index or with `all`.
+- Expired and superseded approvals cannot be approved or denied.
+- Approval callbacks are idempotent.
+- The local status page binds to `127.0.0.1` only.
+- The bot token lives in `setup.md`, which is git-ignored.
+
+Known limits:
+
+- The Telegram bot token is a bearer credential. If it leaks, revoke it in BotFather.
+- Secret redaction is best-effort. Do not paste secrets into Codex or RCC.
+- Uploaded files can contain prompt injection.
+- The Codex App Server protocol can change and break RCC.
+
+The full threat model is in [SECURITY.md](./SECURITY.md) and [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md).
+
+## My role
+
+Solo project: design, implementation, security model and tests.
+
+## Status and limits
+
+- Public alpha. One Mac, one operator, one private Telegram bot.
+- Telegram is the supported interface. The web console and the hosted relay are experimental and are not part of the setup path.
+- Desktop UI approval automation is a prototype and is off by default.
+- No multi-user access, no cloud execution, and no CI workflow.
+- Node 22 prints an `ExperimentalWarning` for `node:sqlite`.
+- The bot shows only reasoning summaries that the App Server exposes. It does not show hidden reasoning.
+
+## Links
+
+- [Install](./INSTALL.md): local Telegram setup.
+- [Quickstart](./QUICKSTART.md): a first run in Telegram.
+- [Examples](./EXAMPLES.md): common operator flows.
+- [Architecture](./ARCHITECTURE.md): daemon, Telegram, Codex, state, and trust boundaries.
+- [Architecture diagram](./docs/ARCHITECTURE_DIAGRAM.md): Mermaid diagrams and trust boundaries.
+- [Telegram bot spec](./TELEGRAM_BOT_SPEC.md): the command contract.
+- [Setup reference](./docs/SETUP_REFERENCE.md): every `setup.md` key.
+- [Security](./SECURITY.md) and [threat model](./docs/THREAT_MODEL.md).
+- [Always-on Mac runtime](./docs/MAC_ALWAYS_ON_RUNTIME.md): LaunchAgent and sleep limits.
+- [Contributing](./CONTRIBUTING.md).
+- [License](./LICENSE): MIT.
