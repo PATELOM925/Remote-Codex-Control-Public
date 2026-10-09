@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
@@ -3530,4 +3532,17 @@ test('web approval response and dismiss move approvals from pending to history',
   } finally {
     daemon.stop();
   }
+});
+
+test('demo replay runs without credentials and prints the duplicate and unknown approval replies', () => {
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/demo-replay.ts'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /rcc> Callback already processed: approve:<id-\d+>/);
+  assert.match(result.stdout, /rcc> Command failed: Unknown approval does-not-exist/);
 });

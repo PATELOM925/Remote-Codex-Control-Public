@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --import tsx tests/rcc.integration.test.ts",
     "start": "node --import tsx src/main.ts",
+    "demo": "node --import tsx scripts/demo-replay.ts",
     "web:check": "node scripts/check-web-static.mjs",
     "relay:check": "node --check api/relay.js",
     "secrets:check": "node scripts/no-secret-scan.mjs",
