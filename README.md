@@ -8,7 +8,7 @@ Coding agents stop and ask before they run commands or change files. If the pers
 
 ## At a glance
 
-- About 17,200 lines of TypeScript in 50 files. 13,663 lines are in `src/`. 3,533 lines are in one integration test file.
+- About 17,400 lines of TypeScript in 51 files. 13,663 lines are in `src/`. 3,548 lines are in one integration test file.
 - 81 test cases. All 81 pass on macOS with Node 22.
 - 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
 - 21 commands registered with the Telegram bot menu at startup.
