@@ -332,3 +332,29 @@ test('setup states the Node requirement it read from package.json', async () => 
   assert.equal(code, 1);
   assert.deepEqual(logs, ['Node 22.22.2 is too old for RCC. Install Node >=24.1.0, then run npm run setup again.']);
 });
+
+test('a symlinked cwd maps to the same project with a slugged id', async () => {
+  const { daemon, baseDir } = await startDaemon({});
+  try {
+    const repoDir = path.join(baseDir, 'My Repo!');
+    const linkDir = path.join(baseDir, 'repo-link');
+    fs.mkdirSync(repoDir);
+    fs.symlinkSync(repoDir, linkDir);
+
+    const first = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-slug-first',
+      cwd: repoDir,
+      status: 'idle',
+    });
+    const second = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-slug-second',
+      cwd: linkDir,
+      status: 'idle',
+    });
+
+    assert.equal(first.projectId, 'auto_my_repo');
+    assert.equal(second.projectId, first.projectId);
+  } finally {
+    daemon.stop();
+  }
+});

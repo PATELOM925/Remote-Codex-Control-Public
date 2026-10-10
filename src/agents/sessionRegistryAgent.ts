@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import type { RccEventEnvelope } from '../contracts/events.js';
@@ -8,6 +7,8 @@ import type { RccRepository, ProjectRecord, ThreadRecord } from '../db/repositor
 import type { EventJournal } from '../event-journal/eventJournal.js';
 import type { RccEventBus } from '../runtime/eventBus.js';
 import { newId } from '../utils/ids.js';
+import { canonicalPath } from '../utils/paths.js';
+import { slugify } from '../utils/slug.js';
 
 export class SessionRegistryAgent {
   // Only the focused thread streams live output to the operator chat.
@@ -155,9 +156,9 @@ export class SessionRegistryAgent {
       return existing;
     }
 
-    const rootPath = this.canonicalPath(input.cwd);
+    const rootPath = canonicalPath(input.cwd);
     const projects = this.listProjects();
-    let project = projects.find((item) => this.canonicalPath(item.rootPath) === rootPath);
+    let project = projects.find((item) => canonicalPath(item.rootPath) === rootPath);
     if (!project) {
       const baseName = path.basename(rootPath) || 'project';
       project = this.registerProject({
@@ -272,18 +273,8 @@ export class SessionRegistryAgent {
     this.repository.updateThreadModel(threadId, model, effort);
   }
 
-  private canonicalPath(rawPath: string): string {
-    const resolved = path.resolve(rawPath);
-    // Resolve symbolic links, so one directory always maps to the same project.
-    try {
-      return fs.realpathSync.native(resolved);
-    } catch {
-      return resolved;
-    }
-  }
-
   private nextProjectId(baseName: string): string {
-    const base = `auto_${this.slugify(baseName)}`;
+    const base = `auto_${slugify(baseName)}`;
     // Disabled projects keep their ids and names, so the proposal must avoid them too.
     const existing = new Set(this.repository.listProjects(true).map((project) => project.id));
     if (!existing.has(base)) {
@@ -307,11 +298,6 @@ export class SessionRegistryAgent {
       suffix += 1;
     }
     return `${normalized}-${suffix}`;
-  }
-
-  private slugify(value: string): string {
-    const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return slug || 'project';
   }
 
   private mustFindThread(threadId: string): ThreadRecord {
