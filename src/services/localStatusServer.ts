@@ -53,6 +53,7 @@ export class LocalStatusServer {
     if (!this.config.localStatusEnabled || this.server) {
       return;
     }
+    // Read routes have no authentication, so the server only binds to loopback addresses.
     if (!['127.0.0.1', '::1', 'localhost'].includes(this.config.localStatusHost)) {
       throw new Error('Local status server must bind to localhost unless authenticated exposure is implemented.');
     }
@@ -1065,6 +1066,7 @@ export class LocalStatusServer {
 
     const artifactRoot = path.resolve(this.config.artifactsRoot, artifact.threadId);
     const localPath = path.resolve(artifact.localPath);
+    // Only serve files inside this thread's artifact root.
     if (!localPath.startsWith(`${artifactRoot}${path.sep}`)) {
       this.sendJson(response, 403, { error: 'artifact_path_blocked', reason: 'artifact outside thread-scoped artifact root' });
       return;
@@ -1114,6 +1116,7 @@ export class LocalStatusServer {
     return this.config.webAllowedOrigins.includes(origin);
   }
 
+  // Web control needs the feature flag, a configured token, and a matching bearer token.
   private requireWebControl(request: http.IncomingMessage, response: http.ServerResponse): boolean {
     if (!this.config.webControlEnabled) {
       this.sendJson(response, 403, {
@@ -1147,6 +1150,7 @@ export class LocalStatusServer {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       const bytes = chunks.reduce((sum, item) => sum + item.byteLength, 0);
       const maxBodyBytes = Math.max(128 * 1024, this.config.telegramDownloadLimitBytes * 2);
+      // Stop reading as soon as the body passes the limit.
       if (bytes > maxBodyBytes) {
         throw new Error('Request body too large.');
       }

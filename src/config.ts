@@ -52,8 +52,8 @@ const detectCodexCli = (): string | undefined => {
     return env;
   }
 
-  // Default Codex desktop install ships a `codex` binary here, but it is not
-  // always on PATH when RCC is launched from a shell/launchd.
+  // The Codex desktop app bundles a codex binary here. It is often not on PATH
+  // when RCC starts from a shell or launchd.
   const appBin = '/Applications/Codex.app/Contents/Resources/codex';
   if (fs.existsSync(appBin)) {
     return appBin;
@@ -64,6 +64,7 @@ const detectCodexCli = (): string | undefined => {
 
 const RELAY_BASE_URL_RE = /^(https:\/\/[^/\s]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)(\/\S*)?$/;
 
+// Accepts https URLs on any host, and plain http only for loopback hosts.
 export const isAllowedRelayBaseUrl = (value: string): boolean => RELAY_BASE_URL_RE.test(value);
 
 const parseCsv = (raw: string | undefined): string[] =>

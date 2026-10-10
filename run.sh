@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Starts the RCC daemon from setup.md. Needs setup.md with the Telegram values, Node 22.5 or newer,
+# npm, and the Codex CLI (on PATH or inside Codex.app).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,8 +14,7 @@ cd "$ROOT_DIR"
 mkdir -p ".dist"
 BACKUP_FILE="${ROOT_DIR}/.dist/setup.backup.md"
 
-# Guardrail: keep a recoverable copy of setup.md (gitignored) so local config
-# doesn't get lost if the file is accidentally replaced/deleted.
+# Keep a recoverable copy of setup.md (gitignored) in case it is replaced or deleted.
 if [[ ! -f "setup.md" ]]; then
   if [[ -f "$BACKUP_FILE" ]]; then
     cp "$BACKUP_FILE" setup.md
@@ -24,11 +25,11 @@ if [[ ! -f "setup.md" ]]; then
   fi
 fi
 
-# Parse key=value from setup.md
+# Print the trimmed value of a key=value line in setup.md, or nothing when the key is absent.
 get_val() {
   local key="$1"
   local line
-  # Avoid ripgrep dependency; use grep available on macOS by default.
+  # Use grep, which ships with macOS, instead of ripgrep.
   line=$(grep -E "^${key}=" setup.md 2>/dev/null | head -n 1 | tr -d '\r')
   if [[ -z "$line" ]]; then
     echo "";

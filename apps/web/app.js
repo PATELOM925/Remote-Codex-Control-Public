@@ -37,6 +37,7 @@ const normalizeAppView = (view) => {
 };
 const initialAppView = normalizeAppView(urlParams.get('view'));
 
+// Tokens live in sessionStorage, so they are cleared when the tab closes.
 const state = {
   mode: initialMode,
   localBaseUrl: prefs.getItem('rcc.localBaseUrl') || prefs.getItem('rcc.baseUrl') || 'http://127.0.0.1:4765',
@@ -77,6 +78,7 @@ const state = {
 };
 
 const $ = (id) => document.querySelector(`#${id}`);
+// Escapes text before it is placed in innerHTML.
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const json = (value) => JSON.stringify(value, null, 2);
 const trimSlash = (value) => String(value || '').trim().replace(/\/$/, '');
@@ -878,7 +880,7 @@ const fetchThreadDetail = async (threadId) => {
   return request(`/api/threads/${encodeURIComponent(threadId)}`);
 };
 
-// last-output replies carry one { output }. The output list reads outputs[].
+// A last-output reply holds one output. Wrap it in the outputs list the view reads.
 const lastOutputDetail = (payload = {}) => ({
   ...payload,
   outputs: Array.isArray(payload.outputs) ? payload.outputs : (payload.output ? [payload.output] : []),

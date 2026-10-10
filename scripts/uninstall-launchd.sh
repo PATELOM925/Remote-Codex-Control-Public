@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Stops and removes the RCC LaunchAgent that install-launchd.sh installed. Needs macOS.
 set -euo pipefail
 
 LABEL="${RCC_LAUNCHD_LABEL:-com.remote-codex-control.daemon}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Starts ./run.sh for launchd. Wraps it in caffeinate unless RCC_DISABLE_CAFFEINATE=true.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

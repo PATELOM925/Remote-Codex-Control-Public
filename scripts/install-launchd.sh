@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Installs the RCC LaunchAgent for the current user and starts it. Needs macOS, setup.md,
+# and the plist template in launchd/.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -67,6 +69,7 @@ runner_xml="$(xml_escape "$RUNNER_PATH")"
 out_xml="$(xml_escape "$LOG_DIR/launchd.out.log")"
 err_xml="$(xml_escape "$LOG_DIR/launchd.err.log")"
 
+# Fill the plist template placeholders with the XML-escaped values.
 sed \
   -e "s#__LABEL__#$label_xml#g" \
   -e "s#__ROOT_DIR__#$root_xml#g" \
@@ -94,6 +97,7 @@ if [[ "$NO_BOOTSTRAP" == "true" ]]; then
   exit 0
 fi
 
+# Remove any agent with this label before bootstrapping the new one.
 launchctl bootout "gui/$(id -u)" "$TARGET_PLIST" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$TARGET_PLIST"
 launchctl enable "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true

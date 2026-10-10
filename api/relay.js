@@ -24,6 +24,7 @@ const VALID_ACTIONS = [
   'dismiss_approval',
 ];
 const VALID_TARGET_KINDS = ['thread', 'approval', 'daemon'];
+// Stored as refresh with the real action in a message prefix (see decodeCompatAction).
 const SUPABASE_COMPAT_ACTIONS = new Set([
   'list_threads',
   'list_skills',
@@ -37,6 +38,7 @@ const SUPABASE_COMPAT_ACTIONS = new Set([
   'dismiss_approval',
 ]);
 
+// In-memory store used when Supabase is not configured. Contents are lost on restart.
 const memory = {
   commands: new Map(),
   results: new Map(),
@@ -65,6 +67,7 @@ const readBody = async (request) => {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
+    // Abort before buffering the rest of an oversized body.
     if (size > MAX_BODY_BYTES) {
       throw new HttpError(413, 'relay_body_too_large');
     }
@@ -76,6 +79,7 @@ const readBody = async (request) => {
 
 const token = (request) => String(request.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
 
+// timingSafeEqual throws on unequal lengths, so the length check must come first.
 const tokensMatch = (provided, expected) => {
   const left = Buffer.from(provided);
   const right = Buffer.from(expected);
@@ -84,6 +88,7 @@ const tokensMatch = (provided, expected) => {
 
 const auth = (request, response, role) => {
   const expected = role === 'mac' ? process.env.RCC_RELAY_MAC_TOKEN : process.env.RCC_RELAY_OPERATOR_TOKEN;
+  // Fail closed when no token is set or the token is shorter than MIN_TOKEN_LENGTH.
   if (!expected || expected.length < MIN_TOKEN_LENGTH) {
     json(response, 503, { error: 'relay_not_configured', role });
     return false;
@@ -115,9 +120,11 @@ const sameOriginFallback = (request) => {
 
 const isAllowedOrigin = (request) => {
   const origin = request.headers.origin;
+  // Requests without an Origin header are not cross-origin browser requests. The bearer token is still checked.
   if (!origin) return true;
   const allowed = configuredAllowedOrigins();
   if (allowed.length > 0) return allowed.includes(origin);
+  // With no allow-list, Vercel accepts only same-origin requests. Outside Vercel any origin passes.
   if (isVercelRuntime(request)) return sameOriginFallback(request);
   return true;
 };
@@ -248,6 +255,7 @@ const encodeCompatAction = (body) => {
   };
 };
 
+// Operator polls see only the names and sizes of uploaded files, never the file contents.
 const sanitizeCommandForOperator = (command) => {
   if (!command || command.action !== 'attach_file') {
     return command;
@@ -559,6 +567,7 @@ export default async function handler(request, response) {
       return;
     }
 
+    // Mac daemon routes are not browser routes, so they skip the origin check and use the mac token.
     if (pathname === '/api/relay/commands/poll' && request.method === 'GET') {
       if (!auth(request, response, 'mac')) return;
       const macId = url.searchParams.get('macId') || 'default-mac';

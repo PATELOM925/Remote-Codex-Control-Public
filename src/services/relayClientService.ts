@@ -48,6 +48,7 @@ export class RelayClientService {
     if (!this.config.relayEnabled) {
       return;
     }
+    // The Mac relay token is only sent to https or loopback http URLs.
     if (!isAllowedRelayBaseUrl(this.config.relayBaseUrl)) {
       this.logger.warn('relay-disabled', {
         reason: 'RCC_RELAY_BASE_URL is missing or not https',
@@ -444,6 +445,7 @@ export class RelayClientService {
     return effort;
   }
 
+  // Every file is validated before any is ingested, so a bad payload stores nothing.
   private parseAttachmentMessage(value: string | undefined): Array<{
     name: string;
     mimeType?: string;
@@ -589,6 +591,7 @@ export class RelayClientService {
     return error instanceof Error ? error.message : String(error);
   }
 
+  // Removes any user name and password from the URL before it is logged.
   private redactUrl(url: string): string {
     try {
       const parsed = new URL(url);

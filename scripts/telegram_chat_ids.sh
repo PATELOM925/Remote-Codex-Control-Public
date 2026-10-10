@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Lists the chat ids that have messaged the bot whose token is in setup.md. Needs curl and python3.
+# The optional argument is the long-poll timeout in seconds.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,8 +34,7 @@ if ! [[ "$TIMEOUT_SEC" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# getUpdates long-polls up to timeout seconds. Send a message to your bot (e.g. /start)
-# while this is running to discover your chat id.
+# getUpdates long-polls for up to the timeout. Send the bot a message while this runs so its chat id is returned.
 payload="$(curl -sS "https://api.telegram.org/bot${TOKEN}/getUpdates?limit=50&timeout=${TIMEOUT_SEC}" || true)"
 
 python3 - <<'PY' "$payload"

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Applies the relay settings in a handoff file to setup.md. setup.md is backed up first.
+# Needs a handoff file as the first argument, or the newest one in .dist/backups/.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -78,6 +80,7 @@ EOF
 fi
 
 VALUES_FILE=".dist/backups/relay-values-$(date +%Y%m%d-%H%M%S).tmp"
+# Keep only the RCC_RELAY_* lines from the Mac setup block.
 awk '
   /^Mac setup\.md:/ { inside = 1; next }
   inside && /^$/ { exit }
@@ -98,6 +101,7 @@ fi
 SETUP_BACKUP=".dist/backups/setup-before-relay-$(date +%Y%m%d-%H%M%S).md"
 cp setup.md "$SETUP_BACKUP"
 
+# Replace the key's line in setup.md, or append it when the key is missing.
 apply_kv() {
   local key="$1"
   local value="$2"

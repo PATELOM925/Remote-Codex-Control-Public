@@ -17,7 +17,7 @@ create table if not exists public.rcc_relay_commands (
   completed_at timestamptz
 );
 
--- Keep this idempotent because alpha command names are still evolving.
+-- Drop and re-add the action check so this script can be re-run when the action list changes.
 alter table public.rcc_relay_commands
   drop constraint if exists rcc_relay_commands_action_check;
 
@@ -58,5 +58,5 @@ alter table public.rcc_relay_commands enable row level security;
 alter table public.rcc_relay_results enable row level security;
 alter table public.rcc_relay_snapshots enable row level security;
 
--- No anon/authenticated policies are created intentionally.
+-- RLS is on with no anon or authenticated policies, so only the service_role key can access these tables.
 -- The Vercel relay function must use the Supabase service_role key server-side only.

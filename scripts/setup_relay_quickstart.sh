@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Creates the operator and Mac relay tokens, writes a local handoff file, and applies the Mac
+# settings to setup.md. Needs an https relay URL (--base-url or RCC_RELAY_BASE_URL).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -84,6 +86,7 @@ generate_token() {
   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 }
 
+# The value goes through a 0600 temp file, so it does not appear in the process list.
 set_vercel_env() {
   local key="$1"
   local value="$2"
@@ -97,6 +100,7 @@ set_vercel_env() {
 }
 
 mkdir -p .dist/backups
+# Token files are readable by the current user only.
 umask 077
 
 OPERATOR_TOKEN="${RCC_RELAY_OPERATOR_TOKEN:-$(generate_token)}"

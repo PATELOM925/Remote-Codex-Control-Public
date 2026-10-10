@@ -2988,7 +2988,7 @@ test('artifact sending blocks stored paths outside the thread artifact root', as
 	    daemon.sessionRegistry.setOperatorFocusThread(created.threadId);
 	    const started = await daemon.codexBridge.startTurn(created.threadId, 'stream test');
 	    appServerClient.emitTurnStream(created.codexThreadId, started.turnId, 'stream output hello');
-	    // Stream forwarding is coalesced on a timer.
+	    // Stream updates are batched on a timer. Wait for the flush before reading messages.
 	    await new Promise((resolve) => setTimeout(resolve, 1400));
 
 	    const joined = telegramClient.sentMessages.map((m) => m.text).join('\n');
@@ -3601,7 +3601,7 @@ test('named project folders turn off auto-discovery unless the limit is set expl
   assert.equal(skipAutoDiscoveryWhenConfigured({ RCC_PROJECT_ROOTS: '  ' }), false);
 });
 
-// The tokens below are fake. They have the right shape, and the test joins the parts so the secret scan stays quiet.
+// These fake tokens have the Telegram token shape. They are joined at runtime so the secret scanner does not flag them.
 const FAKE_BOT_CREDENTIAL = ['123456789', 'AAFakeWizardTokenForTestsOnly0123456789'].join(':');
 const FAKE_BOT_CREDENTIAL_OTHER = ['987654321', 'BBFakeWizardTokenForTestsOnly0123456789'].join(':');
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -3812,7 +3812,7 @@ test('setup writes setup.md with the keys run.sh reads, mode 0600, and run.sh pa
   assert.ok(lines.includes('RCC_RELAY_ENABLED=false'));
   assert.equal(fileMode(deps.setupPath), 0o600);
 
-  // Read the file with the get_val function from run.sh, so the test follows the same parsing as the launcher.
+  // Parse with get_val from run.sh, so the test uses the launcher's own parsing.
   const getValSource = fs.readFileSync(path.join(repoRoot, 'run.sh'), 'utf8').match(/^get_val\(\) \{\n[\s\S]*?\n\}\n/m)?.[0];
   assert.ok(getValSource, 'run.sh must define get_val');
   const readWithRunSh = (key: string): string =>
@@ -3924,7 +3924,6 @@ test('setup errors never include the bot token', async () => {
   assert.match(rejected.logs.join('\n'), /Telegram rejected this token/);
   assert.equal(rejected.logs.join('\n').includes(FAKE_BOT_CREDENTIAL), false);
 
-  // A token pasted as an argument is refused and not echoed back.
   const byArgument = makeWizardDeps({ dir });
   assert.equal(await runWizard([FAKE_BOT_CREDENTIAL], byArgument.deps), 2);
   assert.equal(await runWizard(['--token', FAKE_BOT_CREDENTIAL], byArgument.deps), 2);
@@ -3999,7 +3998,7 @@ test('project folders can be added one at a time, and a missing folder is asked 
     dir,
     env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
     fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
-    // First folder: a typo, then the real one. Second folder: added. Then Enter to finish, then no start.
+    // Answers: a typo (asked again), the real folder, a second folder, Enter to finish, then n to skip starting.
     answers: [path.join(dir, 'typo'), first, second, '', 'n'],
   });
 
