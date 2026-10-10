@@ -13,6 +13,7 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { EventJournal } from '../src/event-journal/eventJournal.js';
+import { DatabaseManager } from '../src/db/database.js';
 import { runMigrations } from '../src/db/migrations.js';
 import { RccRepository } from '../src/db/repositories.js';
 import { Logger } from '../src/logger.js';
@@ -495,4 +496,18 @@ test('findSupersedingApprovalId finds an old superseded event beyond the newest 
   }
 
   assert.equal(repository.findSupersedingApprovalId('approval-old'), 'approval-newer');
+});
+
+test('an open error that only mentions the database does not trigger recovery', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-db-'));
+  // A directory at the database path fails to open with "unable to open database file", which is not corruption.
+  const dbPath = path.join(baseDir, 'rcc.sqlite');
+  fs.mkdirSync(dbPath);
+
+  assert.throws(
+    () => new DatabaseManager({ ...makeDaemonConfig(baseDir), dbPath }, new Logger('error')),
+    /unable to open database file/,
+  );
+
+  assert.equal(fs.existsSync(path.join(baseDir, 'recovery-backups')), false, 'no backup may be made');
 });

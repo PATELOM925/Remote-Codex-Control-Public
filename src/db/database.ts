@@ -22,7 +22,7 @@ export class DatabaseManager {
   }
 
   /**
-   * Recovers from I/O, lock or database open errors by backing up the database files, running an
+   * Recovers from I/O, lock or corruption errors by backing up the database files, running an
    * integrity check and reopening. Other errors are rethrown.
    */
   private openWithGuardedRecovery(): DatabaseSync {
@@ -30,7 +30,7 @@ export class DatabaseManager {
       return new DatabaseSync(this.config.dbPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!/IOERR|disk I\/O|locked|busy|database/i.test(message)) {
+      if (!/IOERR|disk I\/O|locked|busy|malformed|not a database/i.test(message)) {
         throw error;
       }
       this.logger.warn('sqlite-open-failed-recovery-attempt', { dbPath: this.config.dbPath, message });
