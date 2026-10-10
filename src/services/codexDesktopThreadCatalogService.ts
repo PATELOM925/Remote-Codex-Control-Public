@@ -1,8 +1,8 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import type { CodexThread } from '../contracts/codex.js';
+import { CODEX_STATE_DB_PATTERN, latestCodexDbPath } from '../utils/codexState.js';
 
 interface DesktopThreadRow {
   id: string;
@@ -74,35 +74,8 @@ export class CodexDesktopThreadCatalogService {
     return value ? value : undefined;
   }
 
-  // Codex writes versioned state_<n>.sqlite files. The most recently modified one is used.
   private openStateDb(): DatabaseSync | undefined {
-    if (!fs.existsSync(this.codexHome)) {
-      return undefined;
-    }
-
-    let candidates: string[] = [];
-    try {
-      candidates = fs
-        .readdirSync(this.codexHome)
-        .filter((name) => /^state_\d+\.sqlite$/.test(name))
-        .map((name) => path.join(this.codexHome, name));
-    } catch {
-      return undefined;
-    }
-    if (candidates.length === 0) {
-      return undefined;
-    }
-
-    candidates.sort((left, right) => {
-      const leftStat = fs.statSync(left);
-      const rightStat = fs.statSync(right);
-      if (leftStat.mtimeMs !== rightStat.mtimeMs) {
-        return rightStat.mtimeMs - leftStat.mtimeMs;
-      }
-      return right.localeCompare(left);
-    });
-
-    const newest = candidates[0];
+    const newest = latestCodexDbPath(this.codexHome, CODEX_STATE_DB_PATTERN);
     if (!newest) {
       return undefined;
     }

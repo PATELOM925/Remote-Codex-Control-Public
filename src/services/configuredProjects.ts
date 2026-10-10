@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { canonicalPath } from '../utils/paths.js';
+import { slugify } from '../utils/slug.js';
+
 interface ProjectStore {
   listProjects(): Array<{ id: string; rootPath: string }>;
   registerProject(input: { id: string; name: string; rootPath: string }): unknown;
@@ -22,15 +25,6 @@ export const skipAutoDiscoveryWhenConfigured = (env: Record<string, string | und
   return true;
 };
 
-const canonicalPath = (rawPath: string): string => {
-  const resolved = path.resolve(rawPath);
-  try {
-    return fs.realpathSync.native(resolved);
-  } catch {
-    return resolved;
-  }
-};
-
 const isDirectory = (rawPath: string): boolean => {
   try {
     return fs.statSync(rawPath).isDirectory();
@@ -38,12 +32,6 @@ const isDirectory = (rawPath: string): boolean => {
     return false;
   }
 };
-
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'project';
 
 /**
  * Registers the comma-separated folders from RCC_PROJECT_ROOTS. Already registered

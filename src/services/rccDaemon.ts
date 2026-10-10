@@ -11,6 +11,7 @@ import { EventJournal } from '../event-journal/eventJournal.js';
 import { Logger } from '../logger.js';
 import { PolicyEngine } from '../policies/policyEngine.js';
 import { RccEventBus } from '../runtime/eventBus.js';
+import { slugify } from '../utils/slug.js';
 
 import { MockAppServerClient } from '../adapters/codex/mockAppServerClient.js';
 import { CodexAppServerClient } from '../adapters/codex/codexAppServerClient.js';
@@ -814,7 +815,7 @@ export class RccDaemon {
       }
 
       const projectName = this.uniqueProjectName(path.basename(rootPath) || 'project');
-      const projectId = this.uniqueProjectId(`auto_${this.slugify(projectName)}`);
+      const projectId = this.uniqueProjectId(`auto_${slugify(projectName)}`);
       this.sessionRegistry.registerProject({
         id: projectId,
         name: projectName,
@@ -888,11 +889,6 @@ export class RccDaemon {
       suffix += 1;
     }
     return `${baseId}_${suffix}`;
-  }
-
-  private slugify(value: string): string {
-    const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return slug || 'project';
   }
 
   private acquireSingleInstanceLock(): void {

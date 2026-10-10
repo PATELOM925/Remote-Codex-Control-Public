@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -14,6 +13,7 @@ import type { EventJournal } from '../event-journal/eventJournal.js';
 import type { Logger } from '../logger.js';
 import type { RccEventBus } from '../runtime/eventBus.js';
 import { newId } from '../utils/ids.js';
+import { CODEX_LOG_DB_PATTERN, CODEX_STATE_DB_PATTERN, latestCodexDbPath } from '../utils/codexState.js';
 
 import { SessionRegistryAgent } from '../agents/sessionRegistryAgent.js';
 
@@ -620,7 +620,7 @@ export class CodexDesktopStateMonitor {
   }
 
   private openLogDb(): DatabaseSync | undefined {
-    const dbPath = this.detectLatestDbPath(/^logs_\d+\.sqlite$/);
+    const dbPath = latestCodexDbPath(this.codexHome, CODEX_LOG_DB_PATTERN);
     if (!dbPath) {
       return undefined;
     }
@@ -636,7 +636,7 @@ export class CodexDesktopStateMonitor {
   }
 
   private openStateDb(): DatabaseSync | undefined {
-    const dbPath = this.detectLatestDbPath(/^state_\d+\.sqlite$/);
+    const dbPath = latestCodexDbPath(this.codexHome, CODEX_STATE_DB_PATTERN);
     if (!dbPath) {
       return undefined;
     }
@@ -649,30 +649,6 @@ export class CodexDesktopStateMonitor {
     this.stateDbPath = dbPath;
     this.stateDb = new DatabaseSync(dbPath, { readOnly: true });
     return this.stateDb;
-  }
-
-  private detectLatestDbPath(pattern: RegExp): string | undefined {
-    if (!fs.existsSync(this.codexHome)) {
-      return undefined;
-    }
-
-    const matches = fs
-      .readdirSync(this.codexHome)
-      .filter((name) => pattern.test(name))
-      .map((name) => path.join(this.codexHome, name));
-    if (matches.length === 0) {
-      return undefined;
-    }
-
-    matches.sort((left, right) => {
-      const leftStat = fs.statSync(left);
-      const rightStat = fs.statSync(right);
-      if (leftStat.mtimeMs !== rightStat.mtimeMs) {
-        return rightStat.mtimeMs - leftStat.mtimeMs;
-      }
-      return right.localeCompare(left);
-    });
-    return matches[0];
   }
 
   private closeDbs(): void {

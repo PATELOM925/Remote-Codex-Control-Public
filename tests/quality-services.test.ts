@@ -12,6 +12,9 @@ import { Logger } from '../src/logger.js';
 import type { ApprovalRecord } from '../src/db/repositories.js';
 import { buildApprovalDetails, formatApprovalDetailsForTelegram } from '../src/services/approvalDetails.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
+import { canonicalPath } from '../src/utils/paths.js';
+import { latestCodexDbPath, CODEX_STATE_DB_PATTERN } from '../src/utils/codexState.js';
+import { slugify } from '../src/utils/slug.js';
 
 const makeConfig = (baseDir: string): RccConfig => ({
   dbPath: path.join(baseDir, 'rcc.sqlite'),
@@ -201,4 +204,44 @@ test('desktop monitor labels a tool call as a push only when it carries a push',
   assert.equal(monitor.inferActionType('mcp_tool', { cmd: 'git push origin main' }), 'git_push');
   assert.equal(monitor.inferActionType('mcp_tool', { command: 'git push' }), 'git_push');
   assert.equal(monitor.inferActionType('mcp_tool', { action: 'push', branch: 'main' }), 'git_push');
+});
+
+test('slugify keeps lowercase letters and digits and falls back to project', () => {
+  assert.equal(slugify('My Project!'), 'my_project');
+  assert.equal(slugify('  --Hello  World--  '), 'hello_world');
+  assert.equal(slugify('repo-2026'), 'repo_2026');
+  assert.equal(slugify('!!!'), 'project');
+  assert.equal(slugify(''), 'project');
+});
+
+test('canonicalPath resolves symbolic links and keeps missing paths resolved', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-canonical-'));
+  const realDir = path.join(baseDir, 'real');
+  const linkDir = path.join(baseDir, 'link');
+  fs.mkdirSync(realDir);
+  fs.symlinkSync(realDir, linkDir, 'dir');
+
+  assert.equal(canonicalPath(linkDir), fs.realpathSync.native(realDir));
+  const missing = path.join(baseDir, 'missing', 'child');
+  assert.equal(canonicalPath(missing), missing);
+  assert.equal(canonicalPath('.'), fs.realpathSync.native(process.cwd()));
+});
+
+test('latestCodexDbPath returns the newest matching database file', () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-codex-db-'));
+  assert.equal(latestCodexDbPath(path.join(codexHome, 'absent'), CODEX_STATE_DB_PATTERN), undefined);
+  assert.equal(latestCodexDbPath(codexHome, CODEX_STATE_DB_PATTERN), undefined);
+
+  const older = path.join(codexHome, 'state_1.sqlite');
+  const newer = path.join(codexHome, 'state_2.sqlite');
+  const logs = path.join(codexHome, 'logs_9.sqlite');
+  fs.writeFileSync(older, '');
+  fs.writeFileSync(newer, '');
+  fs.writeFileSync(logs, '');
+  const now = Date.now() / 1000;
+  fs.utimesSync(older, now - 120, now - 120);
+  fs.utimesSync(newer, now - 60, now - 60);
+  fs.utimesSync(logs, now, now);
+
+  assert.equal(latestCodexDbPath(codexHome, CODEX_STATE_DB_PATTERN), newer);
 });
