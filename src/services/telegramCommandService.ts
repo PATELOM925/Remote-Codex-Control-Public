@@ -17,6 +17,7 @@ import type { CodexDesktopStateMonitor } from './codexDesktopStateMonitor.js';
 import type { SteeringAgent } from '../agents/steeringAgent.js';
 
 import { CodexSessionService } from './codexSessionService.js';
+// Telegram rejects messages longer than 4096 characters, so text is split below that limit.
 const TELEGRAM_TEXT_LIMIT = 3900;
 const DEFAULT_CODEX_LIST_LIMIT = 30;
 export class TelegramCommandService {
@@ -67,6 +68,7 @@ export class TelegramCommandService {
     }
     async handleUpdate(update: TelegramUpdate): Promise<void> {
         try {
+            // Only configured operator chats may use the bot. Other chats get a fixed refusal and no command runs.
             if (!this.allowedChatIds.has(update.chatId)) {
                 this.logger.warn('telegram-command-unauthorized-chat', { chatId: update.chatId, messageId: update.messageId });
                 await this.sendText(update.chatId, 'Unauthorized chat. This bot is restricted to configured operator chat IDs.');
@@ -690,7 +692,7 @@ export class TelegramCommandService {
         const first = args[0] ?? '';
         const rest = args.slice(1).join(' ').trim();
         const selected = this.selectedCodexThreadByChat.get(chatId);
-        // Prefer selected-thread mode unless first token clearly looks like a ref.
+        // Use the selected thread unless the first token is clearly a thread ref.
         if (selected && !this.looksLikeExplicitThreadRef(first)) {
             const codexThread = await this.resolveCodexThreadRef(selected, chatId);
             const mapped = this.ensureMappedThread(codexThread);
@@ -904,6 +906,7 @@ export class TelegramCommandService {
         const lastAtMs = this.lastCodexListAtMsByChat.get(chatId) ?? 0;
         const lastFresh = fromLastList.length > 0 && Date.now() - lastAtMs < 10 * 60_000;
         const fromLive = await this.listSortedCodexThreads();
+        // A numeric ref is an index into the last /threads or /running list, which is valid for 10 minutes.
         if (/^\d+$/.test(normalized)) {
             if (fromLastList.length > 0 && !lastFresh) {
                 throw new Error('Thread list is stale. Run /threads again, then /pick <index>.');
@@ -1019,9 +1022,8 @@ export class TelegramCommandService {
                 this.ensureMappedThread(codexThread);
                 continue;
             }
-            // NOTE: thread/list status is not reliable for active turns (Codex can show a running
-            // turn while listThreads returns status=idle). We treat listThreads as discovery-only
-            // and rely on turn lifecycle events to drive status transitions.
+            // thread/list status can lag behind active turns. Codex may report a running turn as idle,
+            // so listThreads is used for discovery only. Status changes come from turn lifecycle events.
         }
         return codexThreads;
     }
@@ -1409,7 +1411,7 @@ export class TelegramCommandService {
         if (/^\d+$/.test(value)) {
             return true;
         }
-        // Codex thread ids and prefixes are hex-ish with hyphens.
+        // Codex thread IDs and their prefixes use hex digits and hyphens.
         if (/^[0-9a-f-]{6,}$/i.test(value)) {
             return true;
         }

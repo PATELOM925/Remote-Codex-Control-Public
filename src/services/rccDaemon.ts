@@ -270,8 +270,8 @@ export class RccDaemon {
     if (flushedArtifacts > 0) {
       this.logger.info('artifact-backlog-flushed', { flushedArtifacts });
     }
-    // Telegram can be temporarily unreachable due to network/VPN/captive portals.
-    // Do not crash the daemon; keep retrying in the background.
+    // Telegram can be unreachable for a while (network, VPN, captive portal). Command setup
+    // retries in the background instead of stopping the daemon.
     this.installTelegramCommandsWithRetry();
     this.approvalRouter.registerEventSubscriptions();
     this.registerOperatorNotifications();
@@ -313,6 +313,7 @@ export class RccDaemon {
     });
   }
 
+  /** Refuses to start in strict security mode when an allowlist or token setting is missing or does not match. */
   private validateSecurityDefaults(): void {
     if (!this.config.strictSecurityDefaults) {
       return;
@@ -430,7 +431,7 @@ export class RccDaemon {
       }
     };
 
-    // Try immediately, then every 60s until it succeeds.
+    // Try now, then retry every 60 seconds until the commands install or Telegram rejects the token.
     void attempt();
     this.telegramCommandsTimer = setInterval(() => {
       void attempt();
@@ -644,7 +645,7 @@ export class RccDaemon {
     const normalized = text.trim();
     const methodNorm = (method ?? '').trim();
 
-    // Ignore common non-human “status event” spam.
+    // Drop protocol events that carry no operator-facing text.
     const noisyExact = new Set([
       'item/started',
       'item/completed',
@@ -655,9 +656,8 @@ export class RccDaemon {
       return true;
     }
 
-    // Tool status tends to be extremely chatty; we only want operator-meaningful lines.
+    // Tool status is chatty. Only lines that look like errors are forwarded.
     if (kind === 'tool_status') {
-      // Keep obvious errors, otherwise drop.
       if (/error|failed|not found|permission denied/i.test(normalized)) {
         return false;
       }
@@ -675,7 +675,7 @@ export class RccDaemon {
     const existing = this.streamBuffers.get(threadId) ?? { pieces: [], lastFlushAtMs: 0 };
     existing.pieces.push(input.text);
 
-    // Flush immediately if we have been buffering for a while.
+    // Flush now if the last flush was more than 5 seconds ago, so output is not held back.
     if (existing.lastFlushAtMs && nowMs - existing.lastFlushAtMs > 5_000) {
       void this.flushStreamBuffer(threadId, input.projectLabel, input.threadLabel);
     }
@@ -727,6 +727,7 @@ export class RccDaemon {
   }
 
   private async sendText(chatId: string, text: string): Promise<void> {
+    // Telegram rejects messages longer than 4096 characters, so chunks stay below that limit.
     const chunks = this.chunkText(text, 3900);
     for (const chunk of chunks) {
       try {
@@ -931,20 +932,20 @@ export class RccDaemon {
           process.kill(pid, 0);
           throw new Error(`RCC is already running (pid ${pid}). Stop it before starting a new instance.`);
         } catch (err: any) {
-          // ESRCH means no such process -> stale lock.
+          // ESRCH means the process no longer exists, so the lock is stale.
           if (err?.code !== 'ESRCH') {
             throw err;
           }
         }
       }
     } catch {
-      // ignore parse errors; treat as stale.
+      // A lock file that cannot be read or parsed is treated as stale.
     }
 
     try {
       fs.unlinkSync(lockPath);
     } catch {
-      // ignore
+      // The lock may already be gone. The retry below reports a failure to create it.
     }
 
     // Retry once after removing stale lock.
@@ -963,12 +964,12 @@ export class RccDaemon {
         return;
       }
     } catch {
-      // If unreadable, best-effort cleanup.
+      // If the file cannot be read, still try to remove it.
     }
     try {
       fs.unlinkSync(lockPath);
     } catch {
-      // ignore
+      // Removal is best effort. A leftover lock is treated as stale on the next start.
     }
   }
 

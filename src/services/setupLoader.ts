@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const ASSIGNMENT_PATTERN = /^([A-Z0-9_]+)=(.+)$/;
 
+/** Loads KEY=VALUE lines from setup.md into process.env. Variables that are already set are not overwritten. */
 export const loadSetupFile = (setupPath = path.join(process.cwd(), 'setup.md')): void => {
   if (!fs.existsSync(setupPath)) {
     return;

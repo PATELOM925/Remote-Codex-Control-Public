@@ -5,8 +5,8 @@ import dns from 'node:dns';
 
 loadSetupFile();
 
-// Fix common "fetch failed (connect timeout)" issues on networks with broken IPv6 routing.
-// Can be disabled by setting RCC_DNS_ORDER=verbatim.
+// Prefer IPv4 addresses. Networks with broken IPv6 routing otherwise cause fetch connect timeouts.
+// Set RCC_DNS_ORDER=verbatim to keep the system order.
 if ((process.env.RCC_DNS_ORDER ?? 'ipv4first').toLowerCase() === 'ipv4first') {
   dns.setDefaultResultOrder('ipv4first');
 }

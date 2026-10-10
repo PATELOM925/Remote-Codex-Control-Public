@@ -141,8 +141,8 @@ export class CodexDesktopStateMonitor {
       if (!this.bootstrapped) {
         const maxRow = logDb.prepare('SELECT COALESCE(MAX(id), 0) as max_id FROM logs').get() as { max_id: number };
         const maxId = Number(maxRow?.max_id ?? 0);
-        // Always replay the trailing window on startup (even if a checkpoint exists).
-        // This protects against missed approvals when RCC restarts while Codex is waiting.
+        // Replay the trailing window on startup, even when a checkpoint exists. This keeps
+        // approvals that were still waiting while RCC was down from being missed.
         const startId = Math.max(0, maxId - this.bootstrapRows);
         const rewindTo = Math.max(0, startId - 1);
         this.lastProcessedLogId = this.lastProcessedLogId === 0 ? rewindTo : Math.min(this.lastProcessedLogId, rewindTo);
@@ -233,10 +233,10 @@ export class CodexDesktopStateMonitor {
 
       if (target === 'codex_core::tools::registry' && body.includes('waiting for tool gate')) {
         this.recordToolGateWaiting(codexThreadId, row.id, body);
-        // Persist immediately for live rows. A matching "tool gate released"
-        // row can arrive in the same poll batch, and waiting until the end
-        // would erase the card. Historical replay is handled by the unresolved
-        // gate recovery pass below to avoid re-card spam on restart.
+        // Persist live gates at once. A matching "tool gate released" row can arrive in the
+        // same poll batch, and waiting until the end of the batch would erase the card.
+        // Historical rows are handled by the recovery pass, which avoids posting duplicate
+        // cards on restart.
         if (options.allowLiveFlush && this.isFreshLiveGate(row.ts)) {
           this.flushPendingApprovals();
         }
@@ -603,6 +603,8 @@ export class CodexDesktopStateMonitor {
     return state;
   }
 
+  // Waits for the grace period before an approval is posted. A gate released within the
+  // period never produces a card.
   private isReadyToNotifyApproval(state: DesktopApprovalState): boolean {
     if (this.approvalCardGraceMs <= 0) {
       return true;

@@ -82,6 +82,7 @@ export interface SetupValues {
   projectRoots: string[];
 }
 
+/** Replaces the given token and any bot-token-shaped text with a placeholder before the text is printed. */
 export const scrubSecrets = (text: string, token?: string): string => {
   const withoutToken = token ? text.split(token).join(HIDDEN) : text;
   return withoutToken.replace(TOKEN_LIKE_PATTERN, HIDDEN);
@@ -223,8 +224,10 @@ interface TelegramUpdate {
   };
 }
 
-// Polls getUpdates until a private chat sends a message that the user confirms.
-// Returns undefined when the time window ends with no confirmed chat.
+/**
+ * Polls getUpdates until the user confirms a private chat that sent a message.
+ * Returns undefined when the capture window ends with no confirmed chat.
+ */
 export const captureOperatorChat = async (
   deps: WizardDeps,
   token: string,
@@ -531,6 +534,7 @@ const runSteps = async (opts: ParsedArgs, deps: WizardDeps): Promise<number> => 
     deps.io.log(`Backed up the old file to ${path.basename(backupPath)}.`);
   }
 
+  // The file holds the bot token. It is created exclusively with mode 600, then renamed into place.
   const tempPath = `${deps.setupPath}.tmp-${process.pid}`;
   try {
     deps.fs.writeFileSync(tempPath, setupText, { mode: 0o600, flag: 'wx' });

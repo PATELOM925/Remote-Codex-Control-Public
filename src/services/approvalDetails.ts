@@ -68,6 +68,10 @@ export const approvalRequestSource = (codexRequestId: string): ApprovalRequestSo
   return 'unknown';
 };
 
+/**
+ * Masks token-like values and secret assignments. buildApprovalDetails applies it to the
+ * summary and the command before either one is copied into the details.
+ */
 export const redactApprovalText = (value: string): string =>
   value.replace(SECRET_ASSIGNMENT_RE, '$1=<redacted>').replace(SECRET_VALUE_RE, '<redacted>');
 

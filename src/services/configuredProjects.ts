@@ -45,8 +45,10 @@ const slugify = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'project';
 
-// Registers the comma-separated folders from RCC_PROJECT_ROOTS. A folder that
-// is already registered is left alone, so restarts do not add duplicates.
+/**
+ * Registers the comma-separated folders from RCC_PROJECT_ROOTS. Already registered
+ * folders are skipped, so restarts do not add duplicates. Non-folder entries go to `skipped`.
+ */
 export const registerConfiguredProjects = (store: ProjectStore, raw: string | undefined): ConfiguredProjectResult => {
   const result: ConfiguredProjectResult = { registered: [], skipped: [] };
   const entries = (raw ?? '')

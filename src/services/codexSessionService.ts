@@ -38,8 +38,8 @@ export class CodexSessionService {
       return undefined;
     }
 
-    // Prefer the state DB rollout_path if available. Threads can persist their rollout
-    // JSONL in an older date-based directory while continuing to append to it.
+    // Prefer the rollout path from the state DB. A thread can keep appending to a JSONL file
+    // in an older date-based directory.
     const fromState = this.rolloutPathFromStateDb(threadId);
     if (fromState) {
       return fromState;
@@ -99,9 +99,8 @@ export class CodexSessionService {
     }
   }
 
-  // NOTE: Codex session JSONL lines can contain large encrypted reasoning payloads.
-  // A small tail window can miss the most recent user message, so keep a larger
-  // default to make /last reliable.
+  // Codex session lines can hold large encrypted reasoning payloads. A small window can
+  // miss the latest user message, so the default is large enough for /last to be reliable.
   readTail(threadId: string, bytes = 2_000_000): CodexSessionTail {
     const sessionFile = this.latestSessionFileForThread(threadId);
     if (!sessionFile) {
@@ -120,9 +119,7 @@ export class CodexSessionService {
       const size = stat.size;
       let windowBytes = Math.min(bytes, size);
 
-      // Read a tail window, and if we can't find a recent user message, expand
-      // the window (up to the full file). This keeps /last reliable even when
-      // the session includes very large encrypted reasoning payloads.
+      // Widen the window until a user message is found or the whole file has been read.
       while (true) {
         const start = Math.max(0, size - windowBytes);
         const buffer = Buffer.alloc(size - start);
@@ -130,7 +127,8 @@ export class CodexSessionService {
         const text = buffer.toString('utf8');
         const lines = text.split('\n');
 
-        // Scan from the end; ignore truncated/invalid JSON lines.
+        // Scan from the end. Skip lines that do not parse, because the first line of a window
+        // can be cut in the middle.
         let lastTimestamp: string | undefined;
         let lastUserText: string | undefined;
         let lastToolCall: CodexSessionTail['lastToolCall'];
@@ -239,6 +237,7 @@ export class CodexSessionService {
     }
   }
 
+  // Codex writes versioned state_<n>.sqlite files. The most recently modified one is used.
   private openStateDb(): DatabaseSync | undefined {
     if (!fs.existsSync(this.codexHome)) {
       return undefined;

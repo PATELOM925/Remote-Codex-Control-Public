@@ -18,6 +18,7 @@ export class AppleScriptApprovalAutomationService implements UiApprovalAutomatio
     approvalId: string;
     codexRequestId: string;
   }): Promise<{ ackId: string }> {
+    // Button labels for each decision. The first button whose name matches one of them is clicked.
     const positiveLabels = ['Approve once', 'Allow', 'Approve'];
     const negativeLabels = ['Deny', 'Reject', 'Decline'];
     const labels = input.decision === 'approved' ? positiveLabels : negativeLabels;

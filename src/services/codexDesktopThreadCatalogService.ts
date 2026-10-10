@@ -74,6 +74,7 @@ export class CodexDesktopThreadCatalogService {
     return value ? value : undefined;
   }
 
+  // Codex writes versioned state_<n>.sqlite files. The most recently modified one is used.
   private openStateDb(): DatabaseSync | undefined {
     if (!fs.existsSync(this.codexHome)) {
       return undefined;
