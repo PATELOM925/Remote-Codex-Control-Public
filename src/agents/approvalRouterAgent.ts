@@ -555,8 +555,6 @@ export class ApprovalRouterAgent {
         turnId: approval.turnId,
       },
     );
-    this.publish(forwarded);
-
     let ack: { ackId: string };
     try {
       ack = await this.uiApprovalAutomation.resolveInCodexDesktop({
@@ -578,6 +576,8 @@ export class ApprovalRouterAgent {
       return;
     }
 
+    // Publish only after the desktop automation succeeds. A failed call leaves the approval pending.
+    this.publish(forwarded);
     this.repository.updateApprovalStatus(approval.id, decision);
     const acked = this.journal.createEnvelope<ApprovalResolutionAckedPayload>(
       'ApprovalResolutionAcked',
