@@ -244,4 +244,4 @@ If you turn on the relay, set `RCC_RELAY_BASE_URL` to your own relay URL. It has
 
 Do not share your relay URL or any token with other people.
 
-`run.sh` also sets `RCC_RELAY_POLL_INTERVAL_MS` to `2500` and `RCC_RELAY_SNAPSHOT_INTERVAL_MS` to `10000` when `setup.md` does not set them.
+`RCC_RELAY_POLL_INTERVAL_MS` defaults to `15000` and `RCC_RELAY_SNAPSHOT_INTERVAL_MS` to `60000`. These values keep a small hosted relay within a free plan's request limits.
