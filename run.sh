@@ -135,9 +135,6 @@ fi
 if [[ -z "$RCC_RELAY_ENABLED" ]]; then
   RCC_RELAY_ENABLED="false"
 fi
-if [[ -z "$RCC_RELAY_BASE_URL" ]]; then
-  RCC_RELAY_BASE_URL="https://rcc-magnus-alpha.vercel.app"
-fi
 if [[ -z "$RCC_RELAY_MAC_ID" ]]; then
   RCC_RELAY_MAC_ID="default-mac"
 fi
