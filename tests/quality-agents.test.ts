@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import test from 'node:test';
 
+import { DocumentationAgent } from '../src/agents/documentationAgent.js';
 import { FileIntakeAgent } from '../src/agents/fileIntakeAgent.js';
 import { GitGuardrailAgent } from '../src/agents/gitGuardrailAgent.js';
 import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
@@ -13,6 +14,7 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { EventJournal } from '../src/event-journal/eventJournal.js';
+import { TelegramBotApiClient } from '../src/adapters/telegram/telegramBotApiClient.js';
 import { DatabaseManager } from '../src/db/database.js';
 import { runMigrations } from '../src/db/migrations.js';
 import { RccRepository } from '../src/db/repositories.js';
@@ -510,4 +512,50 @@ test('an open error that only mentions the database does not trigger recovery', 
   );
 
   assert.equal(fs.existsSync(path.join(baseDir, 'recovery-backups')), false, 'no backup may be made');
+});
+
+test('an oversized upload gets a finished sentence that does not use internal branding', async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-intake-'));
+  const { agent, thread } = makeFileIntake({
+    baseDir,
+    policyAllowed: true,
+    telegramClient: new MockTelegramClient(),
+  });
+  const sizeBytes = 2 * 1024 * 1024;
+
+  await assert.rejects(
+    agent.ingestRawAttachment({ threadId: thread.id, fileName: 'big.bin', sizeBytes, bytes: Buffer.alloc(sizeBytes) }),
+    /Attachment exceeds the upload limit of 1048576 bytes\.$/,
+  );
+});
+
+test('documentation coverage reads required docs under a folder path with a trailing slash', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-docs-'));
+  const agent = new DocumentationAgent();
+  for (const relativePath of agent.requiredDocs) {
+    fs.mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true });
+    fs.writeFileSync(path.join(root, relativePath), '# doc\n');
+  }
+  assert.deepEqual(agent.missingDocs(`${root}/`), []);
+
+  fs.rmSync(path.join(root, 'docs/THREAT_MODEL.md'));
+  assert.deepEqual(agent.missingDocs(`${root}/`), ['docs/THREAT_MODEL.md']);
+});
+
+test('downloadFile saves a bare file name into the current folder', async (t) => {
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-download-'));
+  const previousDir = process.cwd();
+  process.chdir(workDir);
+  t.after(() => process.chdir(previousDir));
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    if (String(input).endsWith('/getFile')) {
+      return new Response(JSON.stringify({ ok: true, result: { file_path: 'documents/file.txt' } }));
+    }
+    return new Response('payload');
+  });
+  const client = new TelegramBotApiClient('123:test-token', 'disabled');
+
+  await client.downloadFile('file-1', 'download.txt');
+
+  assert.equal(fs.readFileSync(path.join(workDir, 'download.txt'), 'utf8'), 'payload');
 });

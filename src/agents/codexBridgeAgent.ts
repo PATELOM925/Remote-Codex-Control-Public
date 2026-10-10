@@ -143,12 +143,11 @@ export class CodexBridgeAgent {
         options.reasoningEffort ?? thread.currentEffort,
       );
     }
-    let updatedThread = this.mustFindThread(threadId);
 
     // Threads discovered from the App Server may need a resume before turn/start is accepted.
     // A failed resume is logged and skipped, because turn/start is the authoritative result.
     await this.tryResumeThreadBeforeTurn(thread);
-    updatedThread = this.mustFindThread(threadId);
+    const updatedThread = this.mustFindThread(threadId);
 
     this.repository.addOperatorMessage(threadId, message, 'turn_start');
     this.publish(

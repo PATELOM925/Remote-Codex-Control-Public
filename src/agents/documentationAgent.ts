@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 export class DocumentationAgent {
   readonly requiredDocs = [
@@ -17,7 +18,7 @@ export class DocumentationAgent {
   ] as const;
 
   missingDocs(cwd = process.cwd()): string[] {
-    return this.requiredDocs.filter((relativePath) => !fs.existsSync(`${cwd}/${relativePath}`));
+    return this.requiredDocs.filter((relativePath) => !fs.existsSync(path.join(cwd, relativePath)));
   }
 
   assertCoverage(cwd = process.cwd()): void {

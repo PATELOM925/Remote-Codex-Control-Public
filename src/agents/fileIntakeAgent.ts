@@ -170,7 +170,7 @@ export class FileIntakeAgent {
     }
     if (input.sizeBytes > this.config.telegramDownloadLimitBytes) {
       throw new Error(
-        `Attachment exceeds RCC alpha upload limit (${this.config.telegramDownloadLimitBytes} bytes).`,
+        `Attachment exceeds the upload limit of ${this.config.telegramDownloadLimitBytes} bytes.`,
       );
     }
     if (input.bytes.byteLength !== input.sizeBytes) {

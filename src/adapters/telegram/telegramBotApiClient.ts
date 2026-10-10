@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import path from 'node:path';
 
 import type { TelegramApprovalCard, TelegramClient, TelegramUpdate } from '../../contracts/telegram.js';
 import type { Logger } from '../../logger.js';
@@ -146,7 +147,7 @@ export class TelegramBotApiClient implements TelegramClient {
     }
 
     const bytes = Buffer.from(await response.arrayBuffer());
-    fs.mkdirSync(destinationPath.split('/').slice(0, -1).join('/'), { recursive: true });
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
     fs.writeFileSync(destinationPath, bytes);
   }
 
