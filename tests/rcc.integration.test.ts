@@ -5,6 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { Readable } from 'node:stream';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -4292,4 +4293,209 @@ test('relay snapshot redacts token-like assignments in approval summaries', asyn
   } finally {
     daemon.stop();
   }
+});
+
+type RelayApiHandler = (request: unknown, response: unknown) => Promise<void>;
+
+const RELAY_API_ENV_KEYS = [
+  'RCC_RELAY_OPERATOR_TOKEN',
+  'RCC_RELAY_MAC_TOKEN',
+  'RCC_RELAY_STORAGE',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SERVICE_KEY',
+  'VERCEL',
+  'VERCEL_URL',
+] as const;
+
+const withRelayApiEnv = async (env: Record<string, string>, run: () => Promise<void>): Promise<void> => {
+  const previous = new Map(RELAY_API_ENV_KEYS.map((key) => [key, process.env[key]]));
+  for (const key of RELAY_API_ENV_KEYS) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  try {
+    await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+};
+
+const loadRelayApi = async (): Promise<RelayApiHandler> => {
+  const relayApiPath = path.join(webDemoRoot, 'api/relay.js');
+  const module = (await import(pathToFileURL(relayApiPath).href)) as { default: RelayApiHandler };
+  return module.default;
+};
+
+const callRelayApi = async (
+  handler: RelayApiHandler,
+  options: { method?: string; url: string; token?: string; body?: unknown; rawBody?: Buffer },
+): Promise<{ status: number; text: string; json: any }> => {
+  const payload = options.rawBody ?? (options.body === undefined ? undefined : Buffer.from(JSON.stringify(options.body)));
+  const request = Object.assign(Readable.from(payload ? [payload] : []), {
+    method: options.method ?? 'GET',
+    url: options.url,
+    headers: {
+      host: 'relay.example.com',
+      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+      ...(payload ? { 'content-type': 'application/json' } : {}),
+    },
+  });
+  const response = {
+    statusCode: 200,
+    setHeader: () => undefined,
+    end(chunk?: string) {
+      this.text = chunk ?? '';
+    },
+    text: '',
+  };
+  await handler(request, response);
+  return { status: response.statusCode, text: response.text, json: response.text ? JSON.parse(response.text) : undefined };
+};
+
+const OPERATOR_TOKEN = 'o'.repeat(40);
+const MAC_TOKEN = 'm'.repeat(40);
+const RELAY_API_TOKENS = { RCC_RELAY_OPERATOR_TOKEN: OPERATOR_TOKEN, RCC_RELAY_MAC_TOKEN: MAC_TOKEN };
+
+test('relay API returns 401 for a missing or wrong token', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv(RELAY_API_TOKENS, async () => {
+    const missing = await callRelayApi(handler, { url: '/api/relay/status' });
+    assert.equal(missing.status, 401);
+    assert.equal(missing.json.error, 'relay_unauthorized');
+
+    const sameLength = await callRelayApi(handler, { url: '/api/relay/status', token: 'w'.repeat(40) });
+    assert.equal(sameLength.status, 401);
+
+    const shorter = await callRelayApi(handler, { url: '/api/relay/status', token: 'w'.repeat(12) });
+    assert.equal(shorter.status, 401);
+
+    const macTokenOnOperatorRoute = await callRelayApi(handler, { url: '/api/relay/status', token: MAC_TOKEN });
+    assert.equal(macTokenOnOperatorRoute.status, 401);
+  });
+});
+
+test('relay API returns 503 when a token is unset or shorter than 32 characters', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv({ RCC_RELAY_OPERATOR_TOKEN: 'x'.repeat(31) }, async () => {
+    const weak = await callRelayApi(handler, { url: '/api/relay/status', token: 'x'.repeat(31) });
+    assert.equal(weak.status, 503);
+    assert.equal(weak.json.error, 'relay_not_configured');
+  });
+  await withRelayApiEnv({}, async () => {
+    const unset = await callRelayApi(handler, { url: '/api/relay/status', token: OPERATOR_TOKEN });
+    assert.equal(unset.status, 503);
+    assert.equal(unset.json.error, 'relay_not_configured');
+  });
+});
+
+test('relay API returns 413 for a request body over 1 MB before reading it all', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv(RELAY_API_TOKENS, async () => {
+    const oversize = await callRelayApi(handler, {
+      method: 'POST',
+      url: '/api/relay/commands',
+      token: OPERATOR_TOKEN,
+      rawBody: Buffer.alloc(1024 * 1024 + 1, 0x61),
+    });
+    assert.equal(oversize.status, 413);
+    assert.equal(oversize.json.error, 'relay_body_too_large');
+  });
+});
+
+test('relay API limits command messages to 64 KB except file uploads', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv(RELAY_API_TOKENS, async () => {
+    const tooLong = await callRelayApi(handler, {
+      method: 'POST',
+      url: '/api/relay/commands',
+      token: OPERATOR_TOKEN,
+      body: { action: 'say', targetKind: 'thread', targetId: 'thread-limit-1', message: 'm'.repeat(64 * 1024 + 1) },
+    });
+    assert.equal(tooLong.status, 413);
+    assert.equal(tooLong.json.error, 'relay_message_too_large');
+
+    const upload = await callRelayApi(handler, {
+      method: 'POST',
+      url: '/api/relay/commands',
+      token: OPERATOR_TOKEN,
+      body: { action: 'attach_file', targetKind: 'thread', targetId: 'thread-limit-1', message: 'u'.repeat(100 * 1024) },
+    });
+    assert.equal(upload.status, 202);
+  });
+});
+
+test('relay API lets an operator queue a command and a valid Mac poll receive it', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv(RELAY_API_TOKENS, async () => {
+    const queued = await callRelayApi(handler, {
+      method: 'POST',
+      url: '/api/relay/commands',
+      token: OPERATOR_TOKEN,
+      body: {
+        action: 'say',
+        targetKind: 'thread',
+        targetId: 'thread-handler-1',
+        message: 'hello from the operator',
+        clientRequestId: 'handler-test-say-1',
+      },
+    });
+    assert.equal(queued.status, 202);
+    assert.equal(queued.json.command.id, 'handler-test-say-1');
+
+    const operatorPoll = await callRelayApi(handler, {
+      url: '/api/relay/commands/poll?macId=test-mac',
+      token: OPERATOR_TOKEN,
+    });
+    assert.equal(operatorPoll.status, 401);
+
+    const poll = await callRelayApi(handler, {
+      url: '/api/relay/commands/poll?macId=test-mac',
+      token: MAC_TOKEN,
+    });
+    assert.equal(poll.status, 200);
+    const delivered = poll.json.commands.find((command: { id: string }) => command.id === 'handler-test-say-1');
+    assert.equal(delivered?.status, 'delivered');
+    assert.equal(delivered?.macId, 'test-mac');
+    assert.equal(delivered?.message, 'hello from the operator');
+  });
+});
+
+test('relay API unknown route returns 404 without storage details', async () => {
+  const handler = await loadRelayApi();
+  await withRelayApiEnv(
+    { ...RELAY_API_TOKENS, SUPABASE_URL: 'https://project.example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40) },
+    async () => {
+      const unknown = await callRelayApi(handler, { url: '/api/relay/no-such-route' });
+      assert.equal(unknown.status, 404);
+      assert.deepEqual(unknown.json, { error: 'relay_not_found' });
+      assert.equal(unknown.text.includes('supabase'), false);
+    },
+  );
+});
+
+test('relay API misconfigured storage does not name env vars to unauthenticated callers', async () => {
+  const handler = await loadRelayApi();
+  const originalError = console.error;
+  const logged: unknown[] = [];
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+  try {
+    await withRelayApiEnv({ RCC_RELAY_STORAGE: 'supabase' }, async () => {
+      const response = await callRelayApi(handler, { url: '/api/relay/status' });
+      assert.equal(response.status, 503);
+      assert.deepEqual(response.json, { error: 'relay_storage_misconfigured' });
+      assert.equal(response.text.includes('SUPABASE'), false);
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(logged.length, 1);
 });
