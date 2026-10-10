@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import type { CodexSkillRef, CodexThread, CodexThreadMode } from '../contracts/codex.js';
@@ -987,84 +986,6 @@ export class TelegramCommandService {
         });
         return { id: record.id };
     }
-    async syncCodexThreads() {
-        const beforeProjects = this.sessionRegistry.listProjects().length;
-        const beforeThreads = this.sessionRegistry.listThreads().length;
-        const codexThreads = await this.listSortedCodexThreads();
-        let imported = 0;
-        let alreadyMapped = 0;
-        for (const codexThread of codexThreads) {
-            const existing = this.sessionRegistry.findThreadByCodexThreadId(codexThread.codexThreadId);
-            if (existing) {
-                alreadyMapped += 1;
-                continue;
-            }
-            imported += 1;
-            this.ensureMappedThread(codexThread);
-        }
-        const afterProjects = this.sessionRegistry.listProjects().length;
-        const afterThreads = this.sessionRegistry.listThreads().length;
-        return [
-            'Codex sync complete',
-            `Codex threads discovered: ${codexThreads.length}`,
-            `Projects added: ${Math.max(0, afterProjects - beforeProjects)}`,
-            `Threads imported: ${imported}`,
-            `Threads already mapped: ${alreadyMapped}`,
-            `RCC thread registry size: ${afterThreads}`,
-            '',
-            'Next: /threads and /running',
-        ].join('\n');
-    }
-    async refreshRegistryFromLiveCodex() {
-        const codexThreads = await this.listSortedCodexThreads();
-        for (const codexThread of codexThreads) {
-            const existing = this.sessionRegistry.findThreadByCodexThreadId(codexThread.codexThreadId);
-            if (!existing) {
-                this.ensureMappedThread(codexThread);
-                continue;
-            }
-            // thread/list status can lag behind active turns. Codex may report a running turn as idle,
-            // so listThreads is used for discovery only. Status changes come from turn lifecycle events.
-        }
-        return codexThreads;
-    }
-    nextProjectId(baseName: string): string {
-        const base = `auto_${this.slugify(baseName)}`;
-        const existing = new Set(this.sessionRegistry.listProjects().map((project) => project.id));
-        if (!existing.has(base)) {
-            return base;
-        }
-        let suffix = 2;
-        while (existing.has(`${base}_${suffix}`)) {
-            suffix += 1;
-        }
-        return `${base}_${suffix}`;
-    }
-    nextProjectName(baseName: string): string {
-        const normalized = baseName.trim() || 'project';
-        const existing = new Set(this.sessionRegistry.listProjects().map((project) => project.name.toLowerCase()));
-        if (!existing.has(normalized.toLowerCase())) {
-            return normalized;
-        }
-        let suffix = 2;
-        while (existing.has(`${normalized}-${suffix}`.toLowerCase())) {
-            suffix += 1;
-        }
-        return `${normalized}-${suffix}`;
-    }
-    slugify(value: string): string {
-        const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        return slug || 'project';
-    }
-    canonicalPath(rawPath: string): string {
-        const resolved = path.resolve(rawPath);
-        try {
-            return fs.realpathSync.native(resolved);
-        }
-        catch {
-            return resolved;
-        }
-    }
     compactName(name: string): string {
         if (name.length <= 64) {
             return name;
@@ -1172,26 +1093,6 @@ export class TelegramCommandService {
             active: Boolean(session.active || desktop?.active),
             mtimeMs,
         };
-    }
-    renderMappedThreadsText(limit: number, runningOnly = false): string {
-        const threads = this.sessionRegistry
-            .listThreads()
-            .filter((thread) => runningOnly ? ['running', 'waiting_approval', 'waiting_operator'].includes(thread.status) : true)
-            .slice(0, limit);
-        if (threads.length === 0) {
-            return runningOnly ? 'No running RCC threads.' : 'No RCC threads mapped yet. Use /sync_codex first.';
-        }
-        return [
-            runningOnly ? `Running RCC Threads (${threads.length})` : `RCC Threads (${threads.length})`,
-            ...threads.map((thread, index) => {
-                const project = this.sessionRegistry.getProjectById(thread.projectId);
-                const projectName = project?.name ?? thread.projectId;
-                return `${index + 1}. ${thread.codexThreadId.slice(0, 12)} | ${this.compactName(thread.threadName ?? '(unnamed)')} | ${thread.status} | project=${projectName}`;
-            }),
-            '',
-            'Use /codex to browse live Codex threads.',
-            'Use /pick <index|id from /codex> to select one for /run or /say.',
-        ].join('\n');
     }
     renderProjectsText(projects = this.sessionRegistry.listProjects()): string {
         if (projects.length === 0) {
