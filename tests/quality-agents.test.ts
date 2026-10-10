@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
 import { FileIntakeAgent } from '../src/agents/fileIntakeAgent.js';
+import { GitGuardrailAgent } from '../src/agents/gitGuardrailAgent.js';
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { EventJournal } from '../src/event-journal/eventJournal.js';
 import { Logger } from '../src/logger.js';
-import type { PolicyEngine } from '../src/policies/policyEngine.js';
+import { PolicyEngine } from '../src/policies/policyEngine.js';
 import { RccEventBus } from '../src/runtime/eventBus.js';
 
 // Lists every file under a directory, so a test can prove that nothing was written.
@@ -119,4 +121,87 @@ test('ingestRawAttachment does not write bytes whose path is rejected', async ()
 
   assert.deepEqual(listFiles(baseDir), [], 'a rejected upload must not create any file');
   assert.deepEqual(statuses, ['failed']);
+});
+
+type FakeGitAction = {
+  id: string;
+  threadId: string;
+  actionType: string;
+  targetBranch?: string;
+  status: string;
+  summary?: string;
+};
+
+const makeGitGuardrail = (options: { cwd: string; actionType: 'commit' | 'push'; targetBranch?: string }) => {
+  const action: FakeGitAction = {
+    id: 'action-1',
+    threadId: 'thread-git',
+    actionType: options.actionType,
+    targetBranch: options.targetBranch,
+    status: 'pending',
+  };
+  const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+  const sessionRegistry = {
+    findThreadById: (id: string) => (id === 'thread-git' ? { id, projectId: 'project-1', cwd: options.cwd } : undefined),
+  };
+  const repository = {
+    findGitActionById: (id: string) => (id === action.id ? action : undefined),
+    updateGitActionStatus: (_id: string, status: string, summary?: string) => {
+      action.status = status;
+      action.summary = summary;
+    },
+  };
+  const journal = {
+    createEnvelope: (eventType: string, payload: Record<string, unknown>, context: Record<string, unknown>) => ({
+      eventId: 'event',
+      eventType,
+      payload,
+      ...context,
+    }),
+    append: (event: { eventType: string; payload: Record<string, unknown> }) => {
+      events.push(event);
+    },
+  };
+  const agent = new GitGuardrailAgent(
+    sessionRegistry as never,
+    repository as never,
+    new PolicyEngine(),
+    journal as unknown as EventJournal,
+    new RccEventBus(),
+    new Logger('error'),
+  );
+  return { agent, action, events };
+};
+
+test('approveCommit ends in a failed state when git cannot commit', () => {
+  const notARepo = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-git-'));
+  const { agent, action, events } = makeGitGuardrail({ cwd: notARepo, actionType: 'commit' });
+
+  assert.throws(() => agent.approveCommit(action.id, 'Test commit'), /not a git repository/);
+
+  assert.equal(action.status, 'failed');
+  assert.match(action.summary ?? '', /not a git repository/);
+  assert.equal(events.at(-1)?.payload.status, 'failed');
+});
+
+test('approveCommit reports a commit with nothing to commit as failed', () => {
+  const emptyRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-git-'));
+  spawnSync('git', ['init', '-q', emptyRepo]);
+  const { agent, action } = makeGitGuardrail({ cwd: emptyRepo, actionType: 'commit' });
+
+  assert.throws(() => agent.approveCommit(action.id, 'Nothing here'), /nothing to commit/);
+
+  assert.equal(action.status, 'failed');
+  assert.match(action.summary ?? '', /nothing to commit/);
+});
+
+test('approvePush ends in a failed state when the push fails', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-git-'));
+  spawnSync('git', ['init', '-q', repo]);
+  const { agent, action } = makeGitGuardrail({ cwd: repo, actionType: 'push', targetBranch: 'feature-x' });
+
+  assert.throws(() => agent.approvePush(action.id), /origin/);
+
+  assert.equal(action.status, 'failed');
+  assert.match(action.summary ?? '', /origin/);
 });

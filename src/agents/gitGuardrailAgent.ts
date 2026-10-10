@@ -70,8 +70,12 @@ export class GitGuardrailAgent {
 
     const thread = this.mustFindThread(action.threadId);
 
-    this.git(thread.cwd, ['add', '-A']);
-    this.git(thread.cwd, ['commit', '-m', commitMessage]);
+    try {
+      this.git(thread.cwd, ['add', '-A']);
+      this.git(thread.cwd, ['commit', '-m', commitMessage]);
+    } catch (error) {
+      this.failGitAction(gitActionId, thread, 'commit', error);
+    }
     this.repository.updateGitActionStatus(gitActionId, 'completed', 'Commit created');
 
     this.publish(
@@ -140,7 +144,11 @@ export class GitGuardrailAgent {
       throw new Error(decision.reason);
     }
 
-    this.git(thread.cwd, ['push', remote, action.targetBranch]);
+    try {
+      this.git(thread.cwd, ['push', remote, action.targetBranch]);
+    } catch (error) {
+      this.failGitAction(action.id, thread, 'push', error);
+    }
     this.repository.updateGitActionStatus(action.id, 'completed', `Pushed ${action.targetBranch} to ${remote}`);
 
     this.publish(
@@ -166,11 +174,36 @@ export class GitGuardrailAgent {
       // Arguments go to git directly, without a shell.
       return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
     } catch (error) {
-      if (error instanceof Error) {
-        return error.message;
-      }
-      return String(error);
+      // Some git messages, such as "nothing to commit", go to stdout instead of stderr.
+      const output = error as { stdout?: string | Buffer; stderr?: string | Buffer };
+      const detail = [output.stderr, output.stdout]
+        .map((text) => String(text ?? '').trim())
+        .filter(Boolean)
+        .join('\n');
+      throw new Error(`git ${args[0]} failed${detail ? `: ${detail}` : ''}`);
     }
+  }
+
+  private failGitAction(gitActionId: string, thread: { id: string; projectId: string }, actionType: string, error: unknown): never {
+    const message = error instanceof Error ? error.message : String(error);
+    this.repository.updateGitActionStatus(gitActionId, 'failed', message);
+
+    this.publish(
+      this.journal.createEnvelope(
+        'GitActionUpdated',
+        {
+          gitActionId,
+          threadId: thread.id,
+          actionType,
+          status: 'failed',
+        },
+        {
+          projectId: thread.projectId,
+          threadId: thread.id,
+        },
+      ),
+    );
+    throw error;
   }
 
   private mustFindThread(threadId: string) {
