@@ -563,15 +563,15 @@ export class LocalStatusServer {
       'cache-control': 'no-store',
       connection: 'keep-alive',
     });
-    response.write(': RCC local event stream. Payloads are redacted by design.\\n\\n');
+    response.write(': RCC local event stream. Payloads are redacted by design.\n\n');
 
     const listener = (event: RccEventEnvelope): void => {
       const sequence = this.journal.latestSequence();
-      response.write(`event: rcc-event\\n`);
-      response.write(`data: ${JSON.stringify(this.sanitizeEvent({ ...event, sequence }))}\\n\\n`);
+      response.write(`event: rcc-event\n`);
+      response.write(`data: ${JSON.stringify(this.sanitizeEvent({ ...event, sequence }))}\n\n`);
     };
     const heartbeat = setInterval(() => {
-      response.write(': heartbeat\\n\\n');
+      response.write(': heartbeat\n\n');
     }, 15_000);
 
     this.eventBus.on('*', listener);
@@ -593,15 +593,15 @@ export class LocalStatusServer {
       'cache-control': 'no-store',
       connection: 'keep-alive',
     });
-    response.write(': RCC selected-thread stream. Only App Server-exposed output/events are sent; hidden/raw reasoning is not exposed.\\n\\n');
+    response.write(': RCC selected-thread stream. Only App Server-exposed output/events are sent; hidden/raw reasoning is not exposed.\n\n');
 
     for (const output of this.repository.listRecentTurnOutputs(threadId, 25).reverse()) {
-      response.write('event: thread-output\\n');
-      response.write(`data: ${JSON.stringify(output)}\\n\\n`);
+      response.write('event: thread-output\n');
+      response.write(`data: ${JSON.stringify(output)}\n\n`);
     }
     for (const summary of this.repository.listRecentReasoningSummaries(threadId, 10).reverse()) {
-      response.write('event: reasoning-summary\\n');
-      response.write(`data: ${JSON.stringify(summary)}\\n\\n`);
+      response.write('event: reasoning-summary\n');
+      response.write(`data: ${JSON.stringify(summary)}\n\n`);
     }
 
     const listener = (event: RccEventEnvelope): void => {
@@ -609,10 +609,10 @@ export class LocalStatusServer {
         return;
       }
       const payload = this.asRecord(event.payload);
-      response.write('event: thread-event\\n');
-      response.write(`data: ${JSON.stringify(this.sanitizeEvent(event))}\\n\\n`);
+      response.write('event: thread-event\n');
+      response.write(`data: ${JSON.stringify(this.sanitizeEvent(event))}\n\n`);
       if (event.eventType === 'TurnOutputObserved' && typeof payload.text === 'string') {
-        response.write('event: thread-output\\n');
+        response.write('event: thread-output\n');
         response.write(`data: ${JSON.stringify({
           occurredAt: event.occurredAt,
           threadId,
@@ -620,10 +620,10 @@ export class LocalStatusServer {
           kind: typeof payload.kind === 'string' ? payload.kind : 'system',
           text: payload.text,
           method: typeof payload.method === 'string' ? payload.method : undefined,
-        })}\\n\\n`);
+        })}\n\n`);
       }
       if (event.eventType === 'ReasoningSummaryObserved' && typeof payload.text === 'string') {
-        response.write('event: reasoning-summary\\n');
+        response.write('event: reasoning-summary\n');
         response.write(`data: ${JSON.stringify({
           occurredAt: event.occurredAt,
           threadId,
@@ -631,10 +631,10 @@ export class LocalStatusServer {
           text: redactSensitiveText(payload.text),
           method: typeof payload.method === 'string' ? payload.method : undefined,
           source: 'app_server',
-        })}\\n\\n`);
+        })}\n\n`);
       }
       if (event.eventType === 'ReasoningTextDeltaObserved' && typeof payload.text === 'string') {
-        response.write('event: reasoning-text-delta\\n');
+        response.write('event: reasoning-text-delta\n');
         response.write(`data: ${JSON.stringify({
           occurredAt: event.occurredAt,
           threadId,
@@ -643,11 +643,11 @@ export class LocalStatusServer {
           method: typeof payload.method === 'string' ? payload.method : undefined,
           source: 'app_server',
           experimental: true,
-        })}\\n\\n`);
+        })}\n\n`);
       }
     };
     const heartbeat = setInterval(() => {
-      response.write(': heartbeat\\n\\n');
+      response.write(': heartbeat\n\n');
     }, 15_000);
 
     this.eventBus.on('*', listener);
