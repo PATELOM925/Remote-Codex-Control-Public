@@ -978,8 +978,8 @@ const setRefreshButtonState = (status, detail = '') => {
   }
 };
 
-const withRefreshState = async (label, fn) => {
-  setRefreshButtonState('loading', `${label}...`);
+const withRefreshState = async (label, fn, { quiet = false } = {}) => {
+  if (!quiet) setRefreshButtonState('loading', `${label}...`);
   try {
     const result = await fn();
     state.lastRefreshAt = new Date().toISOString();
@@ -1352,8 +1352,9 @@ const fetchSnapshot = async () => {
   return request('/api/dashboard');
 };
 
-const refresh = async () => {
-  const data = await withRefreshState('Refreshing RCC state', fetchSnapshot);
+const refresh = async ({ background = false } = {}) => {
+  // The demo polls every 2 s. Keep the Refresh label still for those polls.
+  const data = await withRefreshState('Refreshing RCC state', fetchSnapshot, { quiet: demoMode && background });
   state.dashboard = data;
   renderDashboard(data);
 };
@@ -1363,7 +1364,7 @@ const startAutoRefresh = () => {
     clearInterval(state.refreshTimer);
   }
   state.refreshTimer = setInterval(() => {
-    refresh().catch((error) => {
+    refresh({ background: true }).catch((error) => {
       setRefreshButtonState('failed', `Live refresh paused: ${String(error)}`);
     });
   }, demoMode ? 2000 : (state.mode === 'relay' ? 15000 : 5000));
@@ -1413,6 +1414,7 @@ $('composerModel').value = state.composerModel;
 $('composerReasoning').value = state.composerReasoningEffort;
 $('composerSpeed').value = state.composerSpeedPreset;
 if (!demoMode) setMode(state.mode);
+if (demoMode) $('sessionResult').textContent = 'Ready. Open the demo console to start.';
 updateComposerState();
 if (!demoMode && !state.dashboard && (window.location.hash === '#app' || urlParams.has('view'))) {
   $('sessionResult').textContent = `Connect first to open ${appViewLabel(state.activeAppView)}. RCC sends tokens as Authorization headers only; do not put tokens in URLs.`;
