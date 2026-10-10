@@ -20,7 +20,9 @@
     "secrets:check": "node scripts/no-secret-scan.mjs",
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "verify:quick": "node scripts/verify-quick.mjs",
-    "launchd:check": "node scripts/check-launchd.mjs"
+    "launchd:check": "node scripts/check-launchd.mjs",
+    "web:demo:build": "node scripts/build-web-demo.mjs",
+    "web:demo:serve": "node scripts/serve-web-demo.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.18",
