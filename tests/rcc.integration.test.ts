@@ -13,6 +13,7 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import { Logger } from '../src/logger.js';
 import { RelayHttpServer } from '../src/relay/relayHttpServer.js';
+import { registerConfiguredProjects } from '../src/services/configuredProjects.js';
 import { RelayClientService } from '../src/services/relayClientService.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 import { redactSensitiveText } from '../src/utils/redaction.js';
@@ -3545,4 +3546,30 @@ test('demo replay runs without credentials and prints the duplicate and unknown 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /rcc> Callback already processed: approve:<id-\d+>/);
   assert.match(result.stdout, /rcc> Command failed: Unknown approval does-not-exist/);
+});
+
+test('RCC_PROJECT_ROOTS registers each folder once and reports missing folders', async () => {
+  const { daemon, baseDir } = await createDaemon();
+  try {
+    const alpha = path.join(baseDir, 'alpha');
+    const beta = path.join(baseDir, 'beta');
+    const missing = path.join(baseDir, 'missing');
+    fs.mkdirSync(alpha);
+    fs.mkdirSync(beta);
+    const raw = [alpha, beta, missing].join(',');
+
+    const first = registerConfiguredProjects(daemon.sessionRegistry, raw);
+    assert.deepEqual(first.registered.map((root) => path.basename(root)), ['alpha', 'beta']);
+    assert.deepEqual(first.skipped, [missing]);
+
+    const second = registerConfiguredProjects(daemon.sessionRegistry, raw);
+    assert.deepEqual(second.registered, []);
+
+    const roots = daemon.sessionRegistry.listProjects().map((project) => project.rootPath);
+    assert.equal(roots.filter((root) => root === fs.realpathSync(alpha)).length, 1);
+    assert.equal(roots.filter((root) => root === fs.realpathSync(beta)).length, 1);
+    assert.equal(registerConfiguredProjects(daemon.sessionRegistry, undefined).registered.length, 0);
+  } finally {
+    daemon.stop();
+  }
 });

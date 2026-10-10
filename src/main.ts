@@ -1,3 +1,4 @@
+import { registerConfiguredProjects } from './services/configuredProjects.js';
 import { RccDaemon } from './services/rccDaemon.js';
 import { loadSetupFile } from './services/setupLoader.js';
 import dns from 'node:dns';
@@ -32,6 +33,11 @@ const bootstrap = async (): Promise<void> => {
       defaultModel: process.env.RCC_SEED_PROJECT_MODEL,
       defaultEffort: process.env.RCC_SEED_PROJECT_EFFORT as 'low' | 'medium' | 'high' | undefined,
     });
+  }
+
+  const configured = registerConfiguredProjects(daemon.sessionRegistry, process.env.RCC_PROJECT_ROOTS);
+  for (const entry of configured.skipped) {
+    console.warn(`RCC_PROJECT_ROOTS: skipped ${entry} because it is not a folder.`);
   }
 };
 
