@@ -13,7 +13,7 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import { Logger } from '../src/logger.js';
 import { RelayHttpServer } from '../src/relay/relayHttpServer.js';
-import { registerConfiguredProjects } from '../src/services/configuredProjects.js';
+import { registerConfiguredProjects, skipAutoDiscoveryWhenConfigured } from '../src/services/configuredProjects.js';
 import { RelayClientService } from '../src/services/relayClientService.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 import {
@@ -3584,6 +3584,19 @@ test('RCC_PROJECT_ROOTS registers each folder once and reports missing folders',
   } finally {
     daemon.stop();
   }
+});
+
+test('named project folders turn off auto-discovery unless the limit is set explicitly', () => {
+  const named: Record<string, string | undefined> = { RCC_PROJECT_ROOTS: '/tmp/alpha' };
+  assert.equal(skipAutoDiscoveryWhenConfigured(named), true);
+  assert.equal(named.RCC_PROJECT_AUTODISCOVER_LIMIT, '0');
+
+  const explicit: Record<string, string | undefined> = { RCC_PROJECT_ROOTS: '/tmp/alpha', RCC_PROJECT_AUTODISCOVER_LIMIT: '2' };
+  assert.equal(skipAutoDiscoveryWhenConfigured(explicit), false);
+  assert.equal(explicit.RCC_PROJECT_AUTODISCOVER_LIMIT, '2');
+
+  assert.equal(skipAutoDiscoveryWhenConfigured({}), false);
+  assert.equal(skipAutoDiscoveryWhenConfigured({ RCC_PROJECT_ROOTS: '  ' }), false);
 });
 
 // The tokens below are fake. They have the right shape, and the test joins the parts so the secret scan stays quiet.

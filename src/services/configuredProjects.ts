@@ -11,6 +11,17 @@ export interface ConfiguredProjectResult {
   skipped: string[];
 }
 
+// When the operator names project folders, those folders are the project list.
+// Turn off the Codex-thread and folder discovery, which would add other folders.
+// An explicit RCC_PROJECT_AUTODISCOVER_LIMIT still wins.
+export const skipAutoDiscoveryWhenConfigured = (env: Record<string, string | undefined>): boolean => {
+  if (!env.RCC_PROJECT_ROOTS?.trim() || env.RCC_PROJECT_AUTODISCOVER_LIMIT !== undefined) {
+    return false;
+  }
+  env.RCC_PROJECT_AUTODISCOVER_LIMIT = '0';
+  return true;
+};
+
 const canonicalPath = (rawPath: string): string => {
   const resolved = path.resolve(rawPath);
   try {

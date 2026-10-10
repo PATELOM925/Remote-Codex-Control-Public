@@ -1,4 +1,4 @@
-import { registerConfiguredProjects } from './services/configuredProjects.js';
+import { registerConfiguredProjects, skipAutoDiscoveryWhenConfigured } from './services/configuredProjects.js';
 import { RccDaemon } from './services/rccDaemon.js';
 import { loadSetupFile } from './services/setupLoader.js';
 import dns from 'node:dns';
@@ -10,6 +10,9 @@ loadSetupFile();
 if ((process.env.RCC_DNS_ORDER ?? 'ipv4first').toLowerCase() === 'ipv4first') {
   dns.setDefaultResultOrder('ipv4first');
 }
+
+// The config reads the discovery limit when the daemon is created, so this must run first.
+skipAutoDiscoveryWhenConfigured(process.env);
 
 const daemon = new RccDaemon();
 
