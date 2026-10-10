@@ -4499,3 +4499,12 @@ test('relay API misconfigured storage does not name env vars to unauthenticated 
   }
   assert.equal(logged.length, 1);
 });
+
+test('web demo last output returns the single output the console shows as its output list', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const result = await webDemoRun(demo, { action: 'last_output', targetKind: 'thread', targetId: 'thread-invoice-summary' });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.threadId, 'thread-invoice-summary');
+  assert.equal(result.data.output.kind, 'assistant_text');
+  assert.match(result.data.output.text, /\S/);
+});

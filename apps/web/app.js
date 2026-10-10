@@ -878,13 +878,19 @@ const fetchThreadDetail = async (threadId) => {
   return request(`/api/threads/${encodeURIComponent(threadId)}`);
 };
 
+// last-output replies carry one { output }. The output list reads outputs[].
+const lastOutputDetail = (payload = {}) => ({
+  ...payload,
+  outputs: Array.isArray(payload.outputs) ? payload.outputs : (payload.output ? [payload.output] : []),
+});
+
 const fetchLastOutput = async (threadId) => {
   if (!threadId) return null;
   if (state.mode === 'relay') {
     const result = await relayCommandAndWait({ action: 'last_output', targetKind: 'thread', targetId: threadId }, 24_000);
-    return result.data?.detail || result.data;
+    return lastOutputDetail(result.data?.detail || result.data);
   }
-  return request(`/api/threads/${encodeURIComponent(threadId)}/last-output`);
+  return lastOutputDetail(await request(`/api/threads/${encodeURIComponent(threadId)}/last-output`));
 };
 
 const fetchThreadSkills = async (threadId) => {
