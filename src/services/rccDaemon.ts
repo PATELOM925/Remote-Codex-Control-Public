@@ -922,24 +922,10 @@ export class RccDaemon {
       }
     }
 
-    // Existing lock: check if process is alive, otherwise treat as stale.
-    try {
-      const raw = fs.readFileSync(lockPath, 'utf8');
-      const parsed = JSON.parse(raw) as { pid?: number };
-      const pid = typeof parsed.pid === 'number' ? parsed.pid : undefined;
-      if (pid) {
-        try {
-          process.kill(pid, 0);
-          throw new Error(`RCC is already running (pid ${pid}). Stop it before starting a new instance.`);
-        } catch (err: any) {
-          // ESRCH means the process no longer exists, so the lock is stale.
-          if (err?.code !== 'ESRCH') {
-            throw err;
-          }
-        }
-      }
-    } catch {
-      // A lock file that cannot be read or parsed is treated as stale.
+    // Existing lock: stop if its process is alive, otherwise treat it as stale.
+    const livePid = this.livePidFromLock(lockPath);
+    if (livePid !== undefined) {
+      throw new Error(`RCC is already running (pid ${livePid}). Stop it before starting a new instance.`);
     }
 
     try {
@@ -950,6 +936,27 @@ export class RccDaemon {
 
     // Retry once after removing stale lock.
     tryCreate();
+  }
+
+  // Returns the PID in the lock file when that process is alive. Unreadable or unknown locks return undefined.
+  private livePidFromLock(lockPath: string): number | undefined {
+    let pid: unknown;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as { pid?: unknown };
+      pid = parsed.pid;
+    } catch {
+      return undefined;
+    }
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+      return undefined;
+    }
+    try {
+      process.kill(pid, 0);
+      return pid;
+    } catch (err: any) {
+      // EPERM means the process exists but belongs to another user, so it is still alive.
+      return err?.code === 'EPERM' ? pid : undefined;
+    }
   }
 
   private releaseSingleInstanceLock(): void {
