@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --import tsx tests/rcc.integration.test.ts",
+    "test": "node --test --import tsx \"tests/*.test.ts\"",
     "start": "node --import tsx src/main.ts",
     "demo": "node --import tsx scripts/demo-replay.ts",
     "setup": "node --import tsx scripts/setup-wizard.ts",
