@@ -72,7 +72,7 @@ operator> /approval_demo
 rcc> Demo approval triggered for Demo thread
      Approval ID: <id-3>
      ...
-     Actions: /approve <id-3> | /deny <id-3> | /approval <id-3>
+     Actions: /approve <id-3> | /deny <id-3>
 
 operator> /approvals
 rcc> Approvals

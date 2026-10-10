@@ -259,3 +259,40 @@ test('approval details for a file change list the files and no diff line', () =>
 
   assert.doesNotMatch(text, /^Diff:/m);
 });
+
+test('every command listed on an approval card is one the bot handles', async () => {
+  const { daemon, baseDir, telegramClient } = await startDaemon({});
+  try {
+    const thread = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-actions',
+      cwd: baseDir,
+      threadName: 'Actions thread',
+      status: 'idle',
+    });
+    daemon.repository.createApproval({
+      id: 'approval-actions',
+      threadId: thread.id,
+      codexRequestId: 'codex-request-actions',
+      turnId: undefined,
+      actionType: 'command',
+      summary: 'Run command: npm test',
+      status: 'pending',
+    });
+    const approval = daemon.repository.findApprovalById('approval-actions');
+    assert.ok(approval);
+
+    const card = formatApprovalDetailsForTelegram(buildApprovalDetails(approval, thread));
+    const actions = card.match(/^Actions: (.*)$/m)?.[1] ?? '';
+    const commands = actions.split(' | ').map((action) => action.split(' ')[0]);
+    assert.deepEqual(commands, ['/approve', '/deny']);
+
+    for (const command of commands) {
+      telegramClient.sentMessages.splice(0);
+      telegramClient.emitUpdate({ chatId: 'test-chat', messageId: `m-${command}`, text: `${command} approval-actions` });
+      await waitForAsyncHandlers();
+      assert.doesNotMatch(telegramClient.sentMessages.map((message) => message.text).join('\n'), /Unknown command/);
+    }
+  } finally {
+    daemon.stop();
+  }
+});

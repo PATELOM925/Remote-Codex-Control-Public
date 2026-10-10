@@ -143,7 +143,7 @@ export const formatApprovalDetailsForTelegram = (details: ApprovalDetails): stri
   if (details.fileSummary) {
     lines.push(`Files: ${details.fileSummary}`);
   }
-  lines.push('', `Actions: /approve ${details.id} | /deny ${details.id} | /approval ${details.id}`);
+  lines.push('', `Actions: /approve ${details.id} | /deny ${details.id}`);
   return lines.join('\n');
 };
 
