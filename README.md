@@ -8,7 +8,7 @@ Coding agents stop and ask before they run commands or change files. If the pers
 
 ## At a glance
 
-- About 18,900 lines of TypeScript in 53 files. 13,761 lines are in `src/`. 4,209 lines are in one integration test file.
+- About 19,200 lines of TypeScript in 53 files. 13,784 lines are in `src/` (50 files). 4,510 lines are in one integration test file.
 - 120 test cases. All pass on macOS with Node 22.
 - 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
 - 21 commands registered with the Telegram bot menu at startup.
@@ -40,7 +40,7 @@ The setup asks for three things:
 2. Your Telegram chat. Send your new bot a message, then confirm that the chat is yours.
 3. The project folder the agent may work in. You can add more than one.
 
-It writes `setup.md` with owner-only permissions. Then run `./run.sh`. Codex must be installed and signed in for real use. Nothing leaves the Mac except calls to Telegram.
+It writes `setup.md` with owner-only permissions. Then run `./run.sh`. Codex must be installed and signed in for real use. RCC itself calls only the Telegram API, unless you turn on the experimental relay. Codex still talks to its own model service, as it does without RCC.
 
 ## Demo without credentials
 
@@ -167,21 +167,21 @@ Set `HOME` to an empty folder, as shown, so the thread list does not read your r
 
 The real flow needs two more things:
 
-- The real Telegram flow needs `setup.md` with a bot token from BotFather and your numeric chat ID. Run `npm run setup` to write it, or copy `setup.example.md` by hand. Then run `./run.sh`. `run.sh` exits with an error if `setup.md` is missing.
+- The real Telegram flow needs `setup.md` with a bot token from BotFather and your numeric chat ID. Run `npm run setup` to write it, or copy `setup.example.md` by hand. Then run `./run.sh`. If `setup.md` is missing, `run.sh` restores it from `.dist/setup.backup.md` when that backup exists. Otherwise it exits with an error.
 - A real Codex session needs the Codex app or CLI installed and signed in on the Mac.
 
 ## Tests
 
 `npm test` runs the 120 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
 
-- Unknown chats are rejected (line 1202).
-- A git push to `main` is blocked (line 1050).
-- Stale approvals expire, and duplicate callbacks are idempotent (lines 1623 and 2565).
-- Superseded approvals are rejected (line 3238).
-- Attachment names with path traversal stay inside the thread folder (line 309).
-- Artifact sends re-check that the file is inside the artifact root (line 2945).
-- Secret-looking text is redacted (line 3146).
-- The local status server refuses a non-local bind address (line 1028).
+- Unknown chats are rejected (line 1204).
+- A git push to `main` is blocked (line 1052).
+- Stale approvals expire, and duplicate callbacks are idempotent (lines 1625 and 2567).
+- Superseded approvals are rejected (line 3240).
+- Attachment names with path traversal stay inside the thread folder (line 311).
+- Artifact sends re-check that the file is inside the artifact root (line 2947).
+- Secret-looking text is redacted (line 3148).
+- The local status server refuses a non-local bind address (line 1030).
 - The setup wizard accepts only a confirmed private chat, keeps the old `setup.md` as a backup, and never prints the bot token.
 
 There is no CI workflow in this repo. The tests run only when you run them.
@@ -209,7 +209,7 @@ Known limits:
 
 The full threat model is in [SECURITY.md](./SECURITY.md) and [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md).
 
-## My role
+## Project role
 
 Solo project: design, implementation, security model and tests.
 
@@ -219,7 +219,7 @@ Solo project: design, implementation, security model and tests.
 - Telegram is the supported interface. The web console and the hosted relay are experimental and are not part of the setup path.
 - The web console has a public demo mode with simulated data. It does not connect to any computer. Build it with `npm run web:demo:build`; see `apps/web/README.md`.
 - The demo is a static site with no backend. Its Cloudflare config is in `deploy/web-demo`, and deploying it is a manual step.
-- The hosted relay is single-operator and off by default. It needs an explicit `https://` URL in `RCC_RELAY_BASE_URL`. Do not share its URL or operator token with other people.
+- The hosted relay is single-operator and off by default. It needs an explicit `https://` URL in `RCC_RELAY_BASE_URL`. A loopback `http://` URL is allowed for local tests. Do not share its URL or operator token with other people.
 - Desktop UI approval automation is a prototype and is off by default.
 - No multi-user access, no cloud execution, and no CI workflow.
 - Node 22 prints an `ExperimentalWarning` for `node:sqlite`.

@@ -1,6 +1,6 @@
-# RCC Telegram Quickstart
+# Telegram quickstart
 
-This is the shortest successful path after installation.
+This is the shortest path from an installed RCC to a working Telegram session. It is for the operator who runs RCC on the Mac.
 
 ## 1. Start RCC
 
@@ -14,7 +14,9 @@ npm run verify:quick
 
 Keep the terminal running.
 
-## 2. Check Health
+RCC skips Telegram messages that arrived while it was stopped. Send the command again after you start RCC.
+
+## 2. Check health
 
 In Telegram, send:
 
@@ -29,7 +31,7 @@ Look for:
 - `Telegram Commands: installed`
 - `Remote Mode: focused_thread_stream + background_alerts`
 
-## 3. Find And Pick A Thread
+## 3. Find and pick a thread
 
 ```text
 /projects
@@ -42,7 +44,7 @@ Look for:
 
 `/pick` sets the focused thread. RCC streams selected-thread updates to Telegram and keeps background threads quieter.
 
-## 4. Run Or Steer Codex
+## 4. Run or steer Codex
 
 With a selected thread:
 
@@ -63,7 +65,7 @@ To target a specific thread explicitly:
 /say <threadRef> Narrow the answer to verified blockers only.
 ```
 
-## 5. Create Or Resume A Thread
+## 5. Create or resume a thread
 
 ```text
 /projects
@@ -73,13 +75,15 @@ To target a specific thread explicitly:
 
 `/new` only accepts registered project references, not arbitrary filesystem paths.
 
-## 6. Handle Approvals
+## 6. Handle approvals
 
 ```text
 /approvals
 /approve <approvalId>
 /deny <approvalId>
 ```
+
+The approval card also has buttons for these actions: Approve once, Deny, Details, Dismiss, and Interrupt. Dismiss hides the card and does not decide the request. The card format is in [TELEGRAM_BOT_SPEC.md](./TELEGRAM_BOT_SPEC.md#approvals).
 
 Before approval, confirm:
 
@@ -92,7 +96,7 @@ Before approval, confirm:
 
 If the card is unclear or stale, deny it or resolve directly in Codex desktop.
 
-## 7. Attach A File
+## 7. Attach a file
 
 With a selected thread, send a document to the bot with caption:
 
@@ -108,7 +112,7 @@ Or target explicitly:
 
 RCC stores the file under `.dist/uploads/<thread-id>/`, sanitizes the filename, checks path confinement, and sends Codex a local path reference. Uploaded files are untrusted context.
 
-## 8. Retrieve Artifacts
+## 8. Retrieve artifacts
 
 Ask Codex to write artifacts under RCC's artifact root for the selected thread, then run:
 
@@ -119,7 +123,7 @@ Ask Codex to write artifacts under RCC's artifact root for the selected thread, 
 
 RCC lists first and sends only explicit selections. If a file is too large, RCC falls back to zip/manifest/local-path summary depending on policy and size.
 
-## 9. Optional Reasoning Summary
+## 9. Optional reasoning summary
 
 ```text
 /thinking
@@ -131,7 +135,7 @@ This shows `Reasoning Summary` only when Codex App Server exposes summary events
 
 Press `Ctrl+C` in the terminal running `./run.sh`.
 
-## Public Demo Script
+## Public demo script
 
 ```text
 /status

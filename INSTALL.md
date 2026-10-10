@@ -1,6 +1,6 @@
-# Install RCC Public Alpha
+# Install RCC public alpha
 
-This guide installs the Telegram-first public alpha: one trusted operator, one Mac, one private Telegram bot, and local Codex execution.
+This guide installs the Telegram-first public alpha: one trusted operator, one Mac, one private Telegram bot, and local Codex execution. It is for the operator who sets up RCC on their own Mac.
 
 ## Requirements
 
@@ -21,7 +21,7 @@ node -e "import('node:sqlite').then(() => console.log('node:sqlite available'))"
 
 If `node:sqlite` fails, install a newer Node.js runtime before starting RCC.
 
-## Guided Setup (Recommended)
+## Guided setup (recommended)
 
 Run the installer in Terminal. It needs git and Node 22.5 or newer:
 
@@ -51,11 +51,11 @@ Then go to [Run RCC](#run-rcc).
 
 To check the setup without writing anything, run it with `--dry-run`. For a script, use `--yes --chat-id <id> --project <path>` and set the token in `RCC_SETUP_BOT_TOKEN`. Run `npm run setup -- --help` for all options.
 
-## Manual Setup (Alternative)
+## Manual setup (alternative)
 
 Use this path if you want to fill in `setup.md` yourself.
 
-### Install Dependencies
+### Install dependencies
 
 ```bash
 git clone https://github.com/PATELOM925/Remote-Codex-Control-Public.git
@@ -64,7 +64,7 @@ npm ci
 npm run verify:quick
 ```
 
-## Create A Telegram Bot
+## Create a Telegram bot
 
 Telegram's official bot docs describe BotFather as the bot-management path for creating and managing bots. In Telegram:
 
@@ -81,7 +81,7 @@ References:
 - [Telegram Bot Features: BotFather](https://core.telegram.org/bots/features#botfather)
 - [Telegram Bot API: getUpdates](https://core.telegram.org/bots/api#getupdates)
 
-## Create `setup.md` By Hand
+## Create `setup.md` by hand
 
 Skip this section if `npm run setup` already wrote `setup.md`.
 
@@ -112,7 +112,7 @@ Use the numeric ID it prints for `RCC_OPERATOR_CHAT_ID` and `RCC_ALLOWED_CHAT_ID
 
 For every config value, read [docs/SETUP_REFERENCE.md](./docs/SETUP_REFERENCE.md).
 
-## Start Codex Locally
+## Start Codex locally
 
 Open Codex on the Mac and confirm it can see the projects/threads you want to supervise. RCC connects through Codex App Server, usually with:
 
@@ -138,7 +138,9 @@ codex app-server --listen stdio://
 - run `npm install` if needed;
 - start the daemon.
 
-## Verify From Telegram
+RCC skips Telegram messages that arrived while it was stopped. Send the command again after you start RCC. To change this, see `RCC_TELEGRAM_DROP_PENDING_UPDATES_ON_START` in [docs/SETUP_REFERENCE.md](./docs/SETUP_REFERENCE.md).
+
+## Verify from Telegram
 
 Send these to your bot:
 
@@ -160,7 +162,7 @@ Expected:
 - `/threads` lists Codex threads visible to RCC.
 - `/pick` selects one thread for focused live updates.
 
-## Optional: Keep RCC Running
+## Optional: keep RCC running
 
 Use a per-user LaunchAgent when you want RCC to restart after crashes and resist idle sleep while the Mac is awake and on power:
 
@@ -214,9 +216,9 @@ Send `/start` to your bot, then run:
 ./scripts/telegram_chat_ids.sh 30
 ```
 
-### `EADDRINUSE 127.0.0.1:4765`
+### `RCC cannot start because 127.0.0.1:4765 is already in use`
 
-Another RCC daemon is already running on the local status port. Stop the old RCC terminal with `Ctrl+C`, or if it is clearly an old RCC Node process, stop the PID shown by `./run.sh`.
+Another process holds the local status port. `./run.sh` prints the process details. If it is an old RCC daemon, stop that terminal with `Ctrl+C`. If no terminal is visible, stop the PID that `./run.sh` shows. To use another port, set `RCC_LOCAL_STATUS_PORT` in `setup.md`.
 
 Do not run two RCC daemons against the same Telegram bot/database.
 

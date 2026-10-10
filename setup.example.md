@@ -16,10 +16,8 @@ RCC_APPROVAL_STRATEGY=appserver_then_ui
 RCC_UI_AUTOMATION_ENABLED=false
 RCC_UI_AUTOMATION_PROVIDER=applescript
 
-# Local Codex App Server connection
+# Local Codex App Server connection. run.sh finds the Codex binary itself.
 RCC_CODEX_CONNECTION_MODE=stdio
-# Leave unset unless your Codex binary is not auto-detected.
-# RCC_CODEX_CONNECTION_COMMAND=codex app-server --listen stdio://
 
 # Local runtime state. These paths are gitignored.
 RCC_DB_PATH=.dist/rcc.sqlite

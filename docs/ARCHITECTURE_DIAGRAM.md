@@ -1,6 +1,8 @@
-# RCC Architecture Diagram
+# Architecture diagrams
 
-Public alpha path: Telegram controls a local daemon; Codex, files, credentials, and state stay on the Mac.
+These diagrams show the components, the trust boundaries, and one command flow. They are for engineers who review changes to the daemon or its trust boundaries. The prose version is in [ARCHITECTURE.md](../ARCHITECTURE.md).
+
+In the public alpha, Telegram controls a local daemon. Codex, files, credentials, and state stay on the Mac.
 
 ```mermaid
 flowchart LR
@@ -14,7 +16,7 @@ flowchart LR
   daemon --> policies["Deterministic policies\nallowlist, approvals, paths, artifacts, git"]
 ```
 
-## Trust Boundaries
+## Trust boundaries
 
 ```mermaid
 flowchart TB
@@ -46,7 +48,7 @@ Boundary rules:
 - Desktop UI automation is prototype-only and disabled by default.
 - Web/relay code is not part of the public Telegram alpha path.
 
-## Event Flow
+## Event flow
 
 ```mermaid
 sequenceDiagram

@@ -1,8 +1,8 @@
-# RCC Alpha Examples
+# Telegram workflow examples
 
-These examples show what is safe to claim in the current alpha and how the Telegram workflow behaves.
+These examples show how the Telegram commands behave in the public alpha. They are for operators learning the bot and for reviewers who check that the docs match the behaviour. For a first run, use [QUICKSTART.md](./QUICKSTART.md). For the full command list, use [TELEGRAM_BOT_SPEC.md](./TELEGRAM_BOT_SPEC.md).
 
-## Example 1: Health And Thread Focus
+## Example 1: Health and thread focus
 
 Operator:
 
@@ -10,7 +10,7 @@ Operator:
 /status
 ```
 
-Expected use: confirm daemon, Codex transport, App Server compatibility, Telegram command installation, remote mode, approval mode, and sleep-prevention signals.
+Expected use: confirm the daemon, the Codex transport, App Server compatibility, bot command installation, remote mode, approval mode, and sleep prevention.
 
 Operator:
 
@@ -23,12 +23,12 @@ Operator:
 
 Expected behavior:
 
-- `/threads` lists Codex threads visible to RCC.
+- `/threads` lists the Codex threads that RCC can see.
 - `/pick` selects one focused thread for live output.
 - `/where` confirms the selected thread.
-- `/last` shows recent RCC/Telegram instruction context, Codex session tail, approval state, and sync proof when available.
+- `/last` shows recent instructions, the Codex session tail, approval state, and sync details when they exist.
 
-## Example 2: Start A Turn And Steer It
+## Example 2: Start a turn and steer it
 
 Operator:
 
@@ -44,11 +44,11 @@ While the turn is active:
 
 Expected behavior:
 
-- RCC starts or steers the selected Codex thread.
-- The selected thread gets focused live updates.
+- RCC starts a turn on the selected thread, or steers it when a turn is active.
+- The selected thread gets live updates.
 - Background threads do not stream full transcripts.
 
-## Example 2A: Create Or Resume A Thread
+## Example 2A: Create or resume a thread
 
 Operator:
 
@@ -59,8 +59,8 @@ Operator:
 
 Expected behavior:
 
-- RCC creates a new Codex thread inside the selected registered project root.
-- If a task is included, RCC starts the first turn immediately.
+- RCC creates a new Codex thread in the selected registered project folder.
+- When you give a task, RCC starts the first turn at once.
 - RCC selects the new thread as the focused thread.
 
 Operator:
@@ -72,12 +72,14 @@ Operator:
 Expected behavior:
 
 - RCC attaches to the existing Codex thread.
-- If a task is included, RCC starts a turn after resuming.
-- Raw filesystem paths are not accepted as project targets for `/new`.
+- When you give a task, RCC starts a turn after it resumes the thread.
+- `/new` does not accept a raw folder path as the project.
 
-## Example 3: Approval Card
+## Example 3: Approval card
 
-Approval card shape:
+Each approval comes as a card. The card shows the category, risk, reason, project, thread, turn, source, action, scope, approval ID, and age. It has Approve once, Deny, Details, Dismiss, and Interrupt buttons. The full field list is in [TELEGRAM_BOT_SPEC.md](./TELEGRAM_BOT_SPEC.md#approvals).
+
+A short example:
 
 ```text
 Approval needed
@@ -100,21 +102,21 @@ Operator choices:
 
 Expected behavior:
 
-- Current approvals are listed by `/approvals`.
-- Superseded or expired approval IDs are rejected.
-- `Dismiss` hides repeated notification pressure but does not approve or deny the underlying Codex request.
+- `/approvals` lists the approvals you can still act on.
+- Superseded and expired approval IDs are rejected.
+- Dismiss hides the card. It does not approve or deny the Codex request.
 - App Server approvals can be resolved from Telegram.
-- Desktop-log-recovered approvals may require manual Codex desktop approval unless UI automation fallback is intentionally enabled and ready.
+- Desktop-recovered approvals may need a decision in the Codex desktop app. The UI automation fallback works only when it is enabled and ready.
 
-## Example 4: Attachment To A Thread
+## Example 4: Attach a file to a thread
 
-With a selected thread, attach a document in Telegram with this caption or message:
+With a selected thread, send a document to the bot with this caption:
 
 ```text
 /attach
 ```
 
-Or use an explicit thread reference:
+Or name the thread:
 
 ```text
 /attach <threadRef>
@@ -122,23 +124,23 @@ Or use an explicit thread reference:
 
 Expected behavior:
 
-- RCC requires a thread target.
-- RCC downloads the Telegram document under `.dist/uploads/<rcc-thread-id>/` with a sanitized timestamped filename.
-- RCC checks that the saved path stays inside the thread workspace.
-- RCC sends Codex a follow-up instruction with the local file path.
-- The uploaded file is treated as untrusted context, not trusted policy.
+- RCC needs a thread. It uses the selected thread, or the one you name.
+- RCC downloads the file under `.dist/uploads/<rcc-thread-id>/`. The file name is sanitized and has a timestamp prefix.
+- RCC checks that the saved path stays inside the thread's upload folder.
+- RCC tells Codex the local path of the file.
+- RCC treats the file as untrusted context.
 
-Default attachment size baseline: `RCC_TELEGRAM_DOWNLOAD_LIMIT=20971520` bytes.
+The default download limit is 20 MiB (`RCC_TELEGRAM_DOWNLOAD_LIMIT=20971520`).
 
-## Example 5: Explicit Artifact Retrieval
+## Example 5: Send artifacts
 
-Ask Codex to produce an artifact in RCC's artifact root for the active RCC thread. Then run:
+Ask Codex to write artifacts into the artifact folder of the thread. Then run:
 
 ```text
 /artifact
 ```
 
-If files are listed:
+If RCC lists files, send the ones you choose:
 
 ```text
 /artifact send 1
@@ -148,14 +150,14 @@ If files are listed:
 Expected behavior:
 
 - RCC scans `.dist/artifacts/<rcc-thread-id>/` by default.
-- RCC recognizes common artifact extensions such as `.md`, `.pdf`, `.docx`, `.pptx`, `.zip`, and image files.
-- RCC does not auto-send all generated files.
-- RCC sends selected files when under the Telegram send limit.
-- If a file is too large, RCC tries a zip fallback and then writes a local manifest.
+- RCC lists common types such as `.md`, `.pdf`, `.docx`, `.pptx`, `.zip`, and image files.
+- RCC does not send generated files on its own.
+- RCC sends the selected files when they are under the Telegram send limit.
+- A file that is too large makes RCC try to zip it with the system `zip` command. If that fails, RCC writes a manifest with the local path.
 
-Default send baseline: `RCC_TELEGRAM_SEND_LIMIT=52428800` bytes.
+The default send limit is 50 MiB (`RCC_TELEGRAM_SEND_LIMIT=52428800`).
 
-## Example 6: Model And Reasoning Policy
+## Example 6: Model and reasoning effort
 
 Operator:
 
@@ -166,33 +168,12 @@ Operator:
 
 Expected behavior:
 
-- RCC queues model and reasoning-effort changes for the next turn, resumed thread, or new run.
-- RCC does not mutate an already-running action with unsafe turn-level overrides.
+- RCC queues the model and the reasoning effort for the next turn, the next resume, or a new thread.
+- RCC does not change a turn that is already running.
 
-## Example 7: Safe Demo Story
+## Commands that do not run
 
-Use this compact demo narrative:
-
-```text
-RCC is supervising a local Codex run from Telegram. Execution stays on the Mac. Telegram is only the operator control plane for status, steering, approvals, scoped attachments, and explicit artifact retrieval.
-```
-
-Then demonstrate:
-
-```text
-/status
-/threads 10
-/pick 1
-/last
-/run Create a short demo note in .dist/artifacts for this thread.
-/approvals
-/artifact
-/artifact send 1
-```
-
-## Non-Examples
-
-Do not use these as alpha demos:
+These commands reply with a short message and do not run. Do not use them as part of a demo:
 
 ```text
 /git-push main
@@ -200,4 +181,4 @@ Do not use these as alpha demos:
 /project-rename old new
 ```
 
-Git Telegram workflows and project rename are not completed alpha workflows.
+Telegram commit, push, and project rename are not part of the public alpha. See [TELEGRAM_BOT_SPEC.md](./TELEGRAM_BOT_SPEC.md#commands-that-do-not-run).

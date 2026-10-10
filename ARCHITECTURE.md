@@ -1,6 +1,6 @@
 # Architecture
 
-RCC is a Mac-local control layer that connects a private Telegram bot to local Codex through a daemon.
+RCC is a Mac-local control layer that connects a private Telegram bot to local Codex through a daemon. This page describes the components, the state model, and the trust boundaries. It is for engineers who change the daemon.
 
 ```text
 Telegram operator
@@ -17,7 +17,7 @@ RCC daemon on Mac
 
 See [docs/ARCHITECTURE_DIAGRAM.md](./docs/ARCHITECTURE_DIAGRAM.md) for Mermaid diagrams.
 
-## Core Principle
+## Core principle
 
 Keep execution on the Mac. Move only the operator control surface to Telegram.
 
@@ -25,25 +25,25 @@ RCC does not send Codex credentials to Telegram, does not run Codex in the cloud
 
 ## Components
 
-### Telegram Adapter
+### Telegram adapter
 
 - Polls Telegram with the configured bot token.
 - Rejects chats not in `RCC_ALLOWED_CHAT_IDS`.
 - Sends status, thread lists, approval cards, output summaries, and artifacts.
 
-### Command Service
+### Command service
 
 - Resolves `/threads`, `/pick`, `/run`, `/say`, `/attach`, and `/artifact` commands.
 - Keeps one selected thread per operator chat.
 - Avoids destructive defaults when thread references are ambiguous.
 
-### Codex Bridge
+### Codex bridge
 
 - Starts and resumes Codex threads through Codex App Server.
 - Starts turns, steers active turns, interrupts turns, and receives events.
 - Normalizes operator-visible outputs and approval state.
 
-### Session Registry
+### Session registry
 
 Stores stable mappings for:
 
@@ -55,31 +55,31 @@ Stores stable mappings for:
 - status;
 - model and reasoning-effort preferences.
 
-### SQLite Event Store
+### SQLite event store
 
 Local durability for operator-visible state. SQLite lives under `.dist/` and must never be committed.
 
-### Approval Router
+### Approval router
 
 - Enriches approvals with project/thread/action context.
 - Rejects stale, superseded, and duplicate callbacks.
 - Prefers App Server approval resolution.
 - Leaves desktop UI automation disabled by default.
 
-### File Intake
+### File intake
 
-- Requires an explicit thread target.
+- Requires a selected or named thread.
 - Downloads Telegram files under a thread-scoped root.
 - Sanitizes filenames and checks final path confinement.
 - Sends Codex a local path reference.
 
-### Artifact Watcher
+### Artifact watcher
 
 - Lists candidate files under the thread artifact root.
 - Sends files only after explicit `/artifact send` request.
 - Falls back to zip, manifest, or local path summary when direct Telegram delivery is not safe.
 
-## State Model
+## State model
 
 Thread states:
 
@@ -109,7 +109,7 @@ Attachment states:
 - `consumed`
 - `failed`
 
-## Experimental Surfaces
+## Experimental surfaces
 
 The repository includes web and relay code:
 
@@ -117,4 +117,4 @@ The repository includes web and relay code:
 - `api/relay.js`
 - `supabase/rcc_relay_schema.sql`
 
-These are not part of the public Telegram setup path. Do not describe them as production or public-alpha features unless they pass fresh deployment, storage, security, and end-to-end command tests.
+These are not part of the public Telegram setup path. See [SECURITY.md](./SECURITY.md) for their status and [docs/MAINTAINER_NOTES.md](./docs/MAINTAINER_NOTES.md) for the checks they must pass before they become supported.
