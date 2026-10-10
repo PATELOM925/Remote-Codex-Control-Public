@@ -17,6 +17,9 @@ import { newId } from '../utils/ids.js';
 
 import { SessionRegistryAgent } from '../agents/sessionRegistryAgent.js';
 
+// How recent a tool gate row must be to flush at once. Separate from recoveryWindowMs, which covers restart recovery.
+const LIVE_GATE_WINDOW_MS = 2 * 60 * 1000;
+
 interface DesktopLogRow {
   id: number;
   ts: number;
@@ -812,8 +815,7 @@ export class CodexDesktopStateMonitor {
   }
 
   private isFreshLiveGate(tsSeconds: number): boolean {
-    const liveWindowMs = 2 * 60 * 1000;
-    return Date.now() - Number(tsSeconds) * 1000 <= liveWindowMs;
+    return Date.now() - Number(tsSeconds) * 1000 <= LIVE_GATE_WINDOW_MS;
   }
 
   private publish(event: RccEventEnvelope): void {
