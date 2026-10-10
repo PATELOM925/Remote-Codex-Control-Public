@@ -1,0 +1,10 @@
+{
+  "name": "rcc-demo",
+  "compatibility_date": "2026-10-10",
+  "assets": {
+    "directory": "../../dist-demo"
+  },
+  "routes": [
+    { "pattern": "rcc.iampatelom.com", "custom_domain": true }
+  ]
+}
