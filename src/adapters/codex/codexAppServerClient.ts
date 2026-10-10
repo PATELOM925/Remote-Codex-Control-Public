@@ -130,6 +130,24 @@ export class CodexAppServerClient implements AppServerClient {
     this.listeners.add(listener);
   }
 
+  /** Stops the heartbeat, fails pending requests and ends the transport. */
+  close(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
+    }
+    for (const [id, pending] of this.pending) {
+      this.pending.delete(id);
+      pending.reject(new Error(`Codex app-server closed before ${pending.method} completed`));
+    }
+    this.pendingApprovals.clear();
+    this.websocket?.close();
+    this.websocket = undefined;
+    this.stdioProcess?.kill();
+    this.stdioProcess = undefined;
+    this.initialized = false;
+  }
+
   async startThread(input: StartThreadInput): Promise<CodexThread> {
     this.assertInitialized();
 

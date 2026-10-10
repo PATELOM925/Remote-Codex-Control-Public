@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { FileIntakeAgent } from '../src/agents/fileIntakeAgent.js';
 import { GitGuardrailAgent } from '../src/agents/gitGuardrailAgent.js';
+import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
@@ -359,4 +360,43 @@ test('a failed App Server approval call leaves the approval pending and publishe
   } finally {
     daemon.stop();
   }
+});
+
+test('close() stops the heartbeat and ends the app-server process', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const scriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-app-server-'));
+  const scriptPath = path.join(scriptDir, 'fake-app-server.mjs');
+  // Answers only the initialize request, which is all this test needs.
+  fs.writeFileSync(
+    scriptPath,
+    [
+      "import readline from 'node:readline';",
+      "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+      '  const message = JSON.parse(line);',
+      "  if (message.method === 'initialize') {",
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
+      '  }',
+      '});',
+      '',
+    ].join('\n'),
+  );
+  const client = new CodexAppServerClient({
+    mode: 'stdio',
+    command: `node ${scriptPath}`,
+    logger: new Logger('error'),
+  });
+  const heartbeats: string[] = [];
+  client.onEvent((event) => {
+    if (event.type === 'heartbeat') {
+      heartbeats.push(event.timestamp);
+    }
+  });
+
+  await client.initialize();
+  t.mock.timers.tick(15_000);
+  assert.equal(heartbeats.length, 1);
+
+  client.close();
+  t.mock.timers.tick(60_000);
+  assert.equal(heartbeats.length, 1, 'no heartbeat may be emitted after close()');
 });
