@@ -20,7 +20,7 @@ import type {
 } from '../contracts/codex.js';
 import type { ApprovalStatus, ReasoningEffort, TransportStatus } from '../contracts/states.js';
 import type { Logger } from '../logger.js';
-import type { RccRepository } from '../db/repositories.js';
+import type { RccRepository, ThreadRecord } from '../db/repositories.js';
 import type { EventJournal } from '../event-journal/eventJournal.js';
 import type { RccEventBus } from '../runtime/eventBus.js';
 import type { RccConfig } from '../config.js';
@@ -40,6 +40,7 @@ export class CodexBridgeAgent {
   private readonly threadModes = new Map<string, CodexThreadMode>();
   private readonly threadSkills = new Map<string, CodexSkillRef[]>();
   private readonly mapRetryBackoffUntilMs = new Map<string, number>();
+  private readonly pendingApprovalRequests = new Set<string>();
   private compatibility: AppServerCompatibilityResult = {
     status: 'unknown',
     requiredMethods: ['thread/list', 'thread/start', 'thread/resume', 'turn/start', 'turn/steer', 'turn/interrupt', 'approval/response', 'event/stream'],
@@ -686,15 +687,21 @@ export class CodexBridgeAgent {
 
           // Codex can resend the same request. Only the first copy creates an approval.
           const idempotencyKey = `approval-request:${event.approval.requestId}`;
-          if (this.journal.idempotencySeen('app-server', idempotencyKey)) {
+          if (this.journal.idempotencySeen('app-server', idempotencyKey) || this.pendingApprovalRequests.has(idempotencyKey)) {
             this.logger.info('deduped-approval-request', {
               requestId: event.approval.requestId,
             });
             return;
           }
-          this.journal.rememberIdempotency('app-server', idempotencyKey);
 
-          const thread = await this.ensureMappedThread(event.codexThreadId);
+          // Mapping can wait on the App Server, so a copy that arrives meanwhile is also skipped.
+          this.pendingApprovalRequests.add(idempotencyKey);
+          let thread: ThreadRecord | undefined;
+          try {
+            thread = await this.ensureMappedThread(event.codexThreadId);
+          } finally {
+            this.pendingApprovalRequests.delete(idempotencyKey);
+          }
           if (!thread) {
             this.logger.warn('approval-requested-without-mapped-thread', {
               codexThreadId: event.codexThreadId,
@@ -702,6 +709,8 @@ export class CodexBridgeAgent {
             });
             return;
           }
+          // Recorded only after mapping, so a copy dropped above can still be processed on a repeat.
+          this.journal.rememberIdempotency('app-server', idempotencyKey);
 
           const approvalId = newId();
           this.repository.createApproval({

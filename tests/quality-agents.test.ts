@@ -7,12 +7,14 @@ import test from 'node:test';
 
 import { FileIntakeAgent } from '../src/agents/fileIntakeAgent.js';
 import { GitGuardrailAgent } from '../src/agents/gitGuardrailAgent.js';
+import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { EventJournal } from '../src/event-journal/eventJournal.js';
 import { Logger } from '../src/logger.js';
 import { PolicyEngine } from '../src/policies/policyEngine.js';
 import { RccEventBus } from '../src/runtime/eventBus.js';
+import { RccDaemon } from '../src/services/rccDaemon.js';
 
 // Lists every file under a directory, so a test can prove that nothing was written.
 const listFiles = (dir: string): string[] => {
@@ -202,13 +204,16 @@ test('approveCommit reports a commit with nothing to commit as failed', () => {
 
 test('approvePush ends in a failed state when the push fails', () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-git-'));
+  // A branch with one commit, so the only reason the push can fail is the missing remote.
   spawnSync('git', ['init', '-q', repo]);
+  spawnSync('git', ['-c', 'user.name=RCC Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: repo });
+  spawnSync('git', ['checkout', '-q', '-b', 'feature-x'], { cwd: repo });
   const { agent, action } = makeGitGuardrail({ cwd: repo, actionType: 'push', targetBranch: 'feature-x' });
 
-  assert.throws(() => agent.approvePush(action.id), /origin/);
+  assert.throws(() => agent.approvePush(action.id), /'origin' does not appear to be a git repository/);
 
   assert.equal(action.status, 'failed');
-  assert.match(action.summary ?? '', /origin/);
+  assert.match(action.summary ?? '', /'origin' does not appear to be a git repository/);
 });
 
 test('requestCommitApproval tells the operator that every working-tree change is committed', () => {
@@ -219,4 +224,100 @@ test('requestCommitApproval tells the operator that every working-tree change is
   assert.equal(created.length, 1);
   assert.match(created[0]?.summary ?? '', /Fix login/);
   assert.match(created[0]?.summary ?? '', /All changes in the working tree will be committed/);
+});
+
+const makeDaemonConfig = (baseDir: string): RccConfig => ({
+  dbPath: path.join(baseDir, 'rcc.sqlite'),
+  uploadsRoot: path.join(baseDir, 'uploads'),
+  artifactsRoot: path.join(baseDir, 'artifacts'),
+  artifactExternalBaseUrl: undefined,
+  projectAutoDiscoverLimit: 0,
+  telegramBotToken: undefined,
+  telegramTransport: 'disabled',
+  codexConnectionMode: 'mock',
+  codexConnectionCommand: undefined,
+  codexConnectionUrl: undefined,
+  operatorChatId: 'test-chat',
+  allowedChatIds: ['test-chat'],
+  approvalStrategy: 'appserver_then_ui',
+  uiAutomationEnabled: false,
+  uiAutomationProvider: 'applescript',
+  strictSecurityDefaults: true,
+  eventFreshnessThresholdMs: 90_000,
+  desktopApprovalStaleMs: 24 * 60 * 60 * 1000,
+  telegramSendDocumentLimitBytes: 50 * 1024 * 1024,
+  telegramDownloadLimitBytes: 20 * 1024 * 1024,
+  walAutoCheckpointPages: 1000,
+  walGrowthAlertBytes: 1024,
+  walPeriodicCheckpointMs: 5000,
+  healthSnapshotIntervalMs: 5000,
+  localStatusEnabled: false,
+  localStatusHost: '127.0.0.1',
+  localStatusPort: 0,
+  webControlEnabled: false,
+  webAuthToken: undefined,
+  webAllowedOrigins: [],
+  relayEnabled: false,
+  relayBaseUrl: 'http://127.0.0.1:4865',
+  relayMacId: 'test-mac',
+  relayMacToken: undefined,
+  relayPollIntervalMs: 2500,
+  relaySnapshotIntervalMs: 10_000,
+  reasoningSummaryEnabled: true,
+  reasoningTextDeltaEnabled: false,
+  reasoningPersistSummary: true,
+  reasoningPersistTextDelta: false,
+});
+
+const startDaemon = async (appServerClient: MockAppServerClient) => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-quality-'));
+  const codexHome = path.join(baseDir, '.codex');
+  fs.mkdirSync(codexHome, { recursive: true });
+  const daemon = new RccDaemon({
+    config: makeDaemonConfig(baseDir),
+    appServerClient,
+    telegramClient: new MockTelegramClient(),
+    logger: new Logger('error'),
+    codexDesktopStateOptions: { codexHome, pollIntervalMs: 60_000 },
+    codexSessionsRoot: path.join(codexHome, 'sessions'),
+  });
+  await daemon.start();
+  return { daemon, baseDir };
+};
+
+const waitForAsyncHandlers = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 25));
+
+test('approval request dropped before its thread is mapped is processed on a repeat', async () => {
+  const appServerClient = new MockAppServerClient();
+  const { daemon, baseDir } = await startDaemon(appServerClient);
+  try {
+    const request = {
+      requestId: 'req-late',
+      codexThreadId: 'codex-late',
+      actionType: 'command' as const,
+      summary: 'run tests',
+      scope: 'once' as const,
+    };
+    const countApprovals = () =>
+      (daemon.dbManager.db.prepare('SELECT COUNT(*) AS total FROM approvals').get() as { total: number }).total;
+
+    // The first copy arrives before RCC knows the thread, so it is dropped.
+    appServerClient.emitApprovalRequest(request);
+    await waitForAsyncHandlers();
+    assert.equal(countApprovals(), 0);
+
+    // The thread becomes known, then Codex resends the same request.
+    daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-late',
+      cwd: baseDir,
+      threadName: 'Late thread',
+      status: 'idle',
+    });
+    appServerClient.emitApprovalRequest(request);
+    await waitForAsyncHandlers();
+
+    assert.equal(countApprovals(), 1);
+  } finally {
+    daemon.stop();
+  }
 });
