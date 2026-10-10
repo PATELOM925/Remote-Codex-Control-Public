@@ -84,558 +84,104 @@ export class TelegramCommandService {
                 return;
             }
             switch (command) {
-                case '/help': {
-                    await this.sendText(update.chatId, this.helpText());
+                case '/help':
+                    await this.handleHelpCommand(update);
                     break;
-                }
                 case '/codex':
                 case '/codex-threads':
                 case '/codex_threads':
                 case '/sync-codex':
                 case '/codex-sync':
                 case '/sync_codex':
-                case '/codex_sync': {
-                    await this.sendText(update.chatId, 'Deprecated. Use /threads (RCC reads live Codex threads automatically).');
+                case '/codex_sync':
+                    await this.handleCodexCommand(update);
                     break;
-                }
-                case '/approval-demo': {
-                    await this.sendText(update.chatId, 'Deprecated. Use /approval_demo.');
+                case '/approval-demo':
+                    await this.handleApprovalDemoCommand(update);
                     break;
-                }
-                case '/threads': {
-                    const limit = this.parseListLimit(args);
-                    const codexThreads = await this.listSortedCodexThreads();
-                    const visible = codexThreads.slice(0, limit);
-                    this.lastCodexListByChat.set(update.chatId, visible);
-                    this.lastCodexListAtMsByChat.set(update.chatId, Date.now());
-                    await this.sendText(update.chatId, this.renderCodexThreadsText(visible, codexThreads.length, update.chatId));
+                case '/threads':
+                    await this.handleThreadsCommand(update, args);
                     break;
-                }
-                case '/pick': {
-                    if (args.length === 0) {
-                        throw new Error('Usage: /pick <threadRef from /threads>');
-                    }
-                    const joinedRef = args.join(' ').trim();
-                    const firstArg = args[0] ?? '';
-                    if ((/^\d+$/.test(firstArg) || this.looksLikeExplicitThreadRef(firstArg)) && args.length !== 1) {
-                        throw new Error('Usage: /pick <threadRef from /threads>');
-                    }
-                    const threadRef = joinedRef;
-                    if (!threadRef) {
-                        throw new Error('Usage: /pick <threadRef from /threads>');
-                    }
-                    const codexThread = await this.resolveCodexThreadRef(threadRef, update.chatId);
-                    this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    this.sessionRegistry.setOperatorFocusThread(mapped.id);
-                    try {
-                        await this.codexBridge.resumeThread(mapped.id);
-                    }
-                    catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        await this.sendText(update.chatId, `Warning: failed to attach to this thread for live events/approvals.\n${message}`);
-                    }
-                    await this.sendText(update.chatId, [
-                        'Thread selected',
-                        `ID: ${codexThread.codexThreadId}`,
-                        `Name: ${this.compactName(codexThread.threadName ?? '(unnamed)')}`,
-                        `Path: ${this.compactPath(codexThread.cwd)}`,
-                        'Live updates: enabled for this thread (background threads are muted).',
-                        '',
-                        'Now use /run <task> or /say <change request>.',
-                    ].join('\n'));
+                case '/pick':
+                    await this.handlePickCommand(update, args);
                     break;
-                }
-                case '/where': {
-                    const selected = this.selectedCodexThreadByChat.get(update.chatId);
-                    if (!selected) {
-                        await this.sendText(update.chatId, 'No thread selected. Use /threads then /pick <ref>.');
-                        break;
-                    }
-                    const codexThread = await this.resolveCodexThreadRef(selected, update.chatId);
-                    await this.sendText(update.chatId, [
-                        'Current thread',
-                        `ID: ${codexThread.codexThreadId}`,
-                        `Name: ${this.compactName(codexThread.threadName ?? '(unnamed)')}`,
-                        `Status: ${codexThread.status}`,
-                        `Path: ${this.compactPath(codexThread.cwd)}`,
-                    ].join('\n'));
+                case '/where':
+                    await this.handleWhereCommand(update);
                     break;
-                }
-                case '/approvals': {
-                    await this.sendText(update.chatId, this.renderApprovalsText());
+                case '/approvals':
+                    await this.handleApprovalsCommand(update);
                     break;
-                }
-                case '/last': {
-                    const override = this.extractThreadOverride(args);
-                    const limit = this.parseListLimit(override ? override.args : args);
-                    const codexThread = override
-                        ? await this.resolveCodexThreadRef(override.threadRef, update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const thread = this.sessionRegistry.findThreadById(mapped.id);
-                    const lastMessage = this.repository.listOperatorMessages(mapped.id, 1)[0];
-                    const outputs = this.repository.listRecentTurnOutputs(mapped.id, Math.max(1, Math.min(25, limit)));
-                    const codexTail = this.codexSessions.readTail(codexThread.codexThreadId);
-                    const approvals = this.repository.listApprovals(mapped.id);
-                    const pendingApproval = approvals.find((approval) => approval.status === 'pending');
-                    const latestResolvedApproval = approvals.find((approval) => approval.status !== 'pending');
-                    const sessionActivity = this.codexSessions.isRecentlyActive(codexThread.codexThreadId, 30 * 60_000);
-                    const desktopActivity = this.desktopStateMonitor?.getRecentActivity(codexThread.codexThreadId, 30 * 60_000);
-                    const rccStatus = thread?.status ?? 'unknown';
-                    const activeSignal = ['running', 'waiting_approval', 'waiting_operator'].includes(rccStatus)
-                        || sessionActivity.active
-                        || Boolean(desktopActivity?.active);
-                    const statusMismatch = activeSignal && ['idle', 'completed', 'interrupted', 'failed', 'unknown'].includes(rccStatus);
-                    const approvalSource = (codexRequestId?: string): string => {
-                        if (!codexRequestId) {
-                            return 'n/a';
-                        }
-                        if (codexRequestId.startsWith('desktop:')) {
-                            return 'desktop_log_recovered';
-                        }
-                        if (codexRequestId.startsWith('demo:')) {
-                            return 'demo';
-                        }
-                        return 'app_server';
-                    };
-                    const isoAge = (iso?: string): string | undefined => {
-                        if (!iso) {
-                            return undefined;
-                        }
-                        const ms = Date.parse(iso);
-                        if (!Number.isFinite(ms)) {
-                            return undefined;
-                        }
-                        return this.formatAge(Date.now() - ms);
-                    };
-                    const body = [
-                        `Last for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                        `Codex ID: ${codexThread.codexThreadId}`,
-                        `RCC Status: ${rccStatus}`,
-                        `Active Turn: ${thread?.activeTurnId ?? 'n/a'}`,
-                        '',
-                        'Approval:',
-                        pendingApproval
-                            ? `Pending: ${pendingApproval.id} | ${isoAge(pendingApproval.createdAt) ?? 'n/a'} ago | ${approvalSource(pendingApproval.codexRequestId)} | ${pendingApproval.summary}`
-                            : 'Pending: none',
-                        latestResolvedApproval
-                            ? `Last resolved: ${latestResolvedApproval.id} | ${latestResolvedApproval.status} | ${isoAge(latestResolvedApproval.resolvedAt) ?? 'n/a'} ago | ${approvalSource(latestResolvedApproval.codexRequestId)}`
-                            : 'Last resolved: none',
-                        '',
-                        'Sync Proof:',
-                        `Session recent activity: ${sessionActivity.active ? 'yes' : 'no'}${sessionActivity.mtimeMs ? ` (${Math.round((Date.now() - sessionActivity.mtimeMs) / 1000)}s ago)` : ''}`,
-                        `Desktop log activity: ${desktopActivity?.active ? 'yes' : 'no'}${desktopActivity?.mtimeMs ? ` (${Math.round((Date.now() - desktopActivity.mtimeMs) / 1000)}s ago)` : ''}`,
-                        `Mismatch: ${statusMismatch ? 'active_signals_but_rcc_not_running' : 'none'}`,
-                        '',
-                        'Last instruction (via RCC/Telegram):',
-                        lastMessage
-                            ? `[${lastMessage.createdAt}] (${lastMessage.deliveryMode}) ${lastMessage.messageText}`
-                            : '(none recorded; this thread may have been started from the desktop app)',
-                        '',
-                        'Last instruction (Codex session):',
-                        codexTail.lastUserText ? codexTail.lastUserText : '(n/a)',
-                        '',
-                        `RCC recent output (${outputs.length}):`,
-                        ...(outputs.length
-                            ? outputs
-                                .slice()
-                                .reverse()
-                                .map((out) => `[${out.occurredAt}] (${out.kind}) ${out.text}`)
-                            : ['(none observed yet)']),
-                        '',
-                        'Codex session tail:',
-                        codexTail.sessionFile
-                            ? `Session: ${this.compactPath(codexTail.sessionFile)}`
-                            : 'Session: (not found)',
-                        codexTail.sessionMtimeMs ? `Session mtime: ${Math.round((Date.now() - codexTail.sessionMtimeMs) / 1000)}s ago` : 'Session mtime: n/a',
-                        codexTail.lastToolCall ? `Last tool: ${codexTail.lastToolCall.name} | ${codexTail.lastToolCall.summary}` : 'Last tool: (n/a)',
-                        codexTail.lastToolOutput ? `Last output: ${codexTail.lastToolOutput.summary}` : 'Last output: (n/a)',
-                        codexTail.lastAssistantText ? `Last assistant: ${codexTail.lastAssistantText}` : 'Last assistant: (n/a)',
-                    ].join('\n');
-                    await this.sendText(update.chatId, body);
+                case '/last':
+                    await this.handleLastCommand(update, args);
                     break;
-                }
-                case '/thinking': {
-                    const override = this.extractThreadOverride(args);
-                    const limit = this.parseListLimit(override ? override.args : args);
-                    const codexThread = override
-                        ? await this.resolveCodexThreadRef(override.threadRef, update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const summaries = this.repository.listRecentReasoningSummaries(mapped.id, Math.max(1, Math.min(10, limit)));
-                    await this.sendText(update.chatId, this.renderReasoningSummaryText(codexThread, summaries));
+                case '/thinking':
+                    await this.handleThinkingCommand(update, args);
                     break;
-                }
-                case '/run': {
-                    const { codexThread, message, skills } = await this.resolveThreadAndMessageForRun(args, update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
-                    this.sessionRegistry.setOperatorFocusThread(mapped.id);
-                    if (this.shouldRouteRunAsSteer(codexThread, mapped.id)) {
-                        await this.sendText(update.chatId, [
-                            'Run request received',
-                            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                            `Codex ID: ${codexThread.codexThreadId}`,
-                            'Thread is already active or waiting, so RCC will not start a second turn.',
-                            'Routing this as steering guidance instead.',
-                            skills?.length
-                                ? 'Note: selected skills apply only to new turns, not steering messages.'
-                                : undefined,
-                        ].filter(Boolean).join('\n'));
-                        const mode = await this.steeringAgent.steerOrQueue(mapped.id, message);
-                        await this.sendText(update.chatId, mode === 'steer_active_turn'
-                            ? `Steering sent to active turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`
-                            : [
-                                'No active turn was attachable from RCC.',
-                                'Message queued as the next instruction for this thread.',
-                                'If Codex is waiting for approval, use /approvals and resolve that approval first.',
-                            ].join('\n'));
-                        break;
-                    }
-                    await this.sendText(update.chatId, [
-                        'Run request received',
-                        `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                        `Codex ID: ${codexThread.codexThreadId}`,
-                        'RCC is sending this to Codex now. Live output will stream here when available; /last shows the latest captured result.',
-                    ].join('\n'));
-                    const started = await this.codexBridge.startTurn(mapped.id, message, { skills });
-                    await this.sendText(update.chatId, [
-                        'Turn started',
-                        `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                        `Codex ID: ${codexThread.codexThreadId}`,
-                        `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
-                        `Skills: ${this.renderSkillNames(this.codexBridge.getThreadSkills(mapped.id), skills)}`,
-                        `Turn ID: ${started.turnId}`,
-                        '',
-                        'Use /say <change> while running.',
-                    ].join('\n'));
+                case '/run':
+                    await this.handleRunCommand(update, args);
                     break;
-                }
-                case '/plan': {
-                    const { codexThread, message, skills } = await this.resolveThreadAndMessageForRun(args, update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    this.codexBridge.setThreadMode(mapped.id, 'plan');
-                    const started = await this.codexBridge.startTurn(mapped.id, message, { mode: 'plan', skills });
-                    this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
-                    this.sessionRegistry.setOperatorFocusThread(mapped.id);
-                    await this.sendText(update.chatId, [
-                        'Plan turn started',
-                        `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                        `Codex ID: ${codexThread.codexThreadId}`,
-                        `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
-                        `Skills: ${this.renderSkillNames(this.codexBridge.getThreadSkills(mapped.id), skills)}`,
-                        `Turn ID: ${started.turnId}`,
-                    ].join('\n'));
+                case '/plan':
+                    await this.handlePlanCommand(update, args);
                     break;
-                }
-                case '/say': {
-                    const { codexThread, message } = await this.resolveThreadAndMessageForSay(args, update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const mode = await this.steeringAgent.steerOrQueue(mapped.id, message);
-                    this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
-                    this.sessionRegistry.setOperatorFocusThread(mapped.id);
-                    await this.sendText(update.chatId, mode === 'steer_active_turn'
-                        ? `Steering sent to active turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`
-                        : `No active turn. Message queued. Start with /run ${codexThread.codexThreadId}`);
+                case '/say':
+                    await this.handleSayCommand(update, args);
                     break;
-                }
-                case '/interrupt': {
-                    const codexRef = args[0];
-                    const codexThread = codexRef
-                        ? await this.resolveCodexThreadRef(codexRef, update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    await this.codexBridge.interruptTurn(mapped.id);
-                    await this.sendText(update.chatId, `Interrupted active turn for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`);
+                case '/interrupt':
+                    await this.handleInterruptCommand(update, args);
                     break;
-                }
-                case '/attach': {
-                    if (!update.attachment) {
-                        throw new Error('Usage: /attach [threadRef] with file in same message.');
-                    }
-                    const codexRef = args[0];
-                    const codexThread = codexRef
-                        ? await this.resolveCodexThreadRef(codexRef, update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const result = await this.fileIntakeAgent.ingestAttachment({
-                        threadId: mapped.id,
-                        attachment: update.attachment,
-                    });
-                    await this.sendText(update.chatId, `Attachment ingested for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}\nSaved: ${result.localPath}`);
+                case '/attach':
+                    await this.handleAttachCommand(update, args);
                     break;
-                }
-                case '/artifact': {
-                    const artifactAction = this.parseArtifactAction(args);
-                    const codexRef = artifactAction.threadRef;
-                    const codexThread = codexRef
-                        ? await this.resolveCodexThreadRef(codexRef, update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const cacheKey = `${update.chatId}:${mapped.id}`;
-                    if (artifactAction.mode === 'send') {
-                        const cached = this.lastArtifactListByChat.get(cacheKey) ?? [];
-                        if (cached.length === 0) {
-                            throw new Error('No artifact list cached. Run /artifact first.');
-                        }
-                        const artifact = artifactAction.selection === 'all'
-                            ? cached
-                            : [this.resolveArtifactSelection(artifactAction.selection, cached)];
-                        await this.artifactWatcher.sendArtifacts(mapped.id, artifact.map((item) => item.id));
-                        await this.sendText(update.chatId, `Artifact send attempted for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`);
-                        break;
-                    }
-                    this.artifactWatcher.detectArtifacts(mapped.id);
-                    const pending = this.artifactWatcher.listPendingArtifacts(mapped.id);
-                    this.lastArtifactListByChat.set(cacheKey, pending);
-                    await this.sendText(update.chatId, this.renderArtifactListText(codexThread, pending));
+                case '/artifact':
+                    await this.handleArtifactCommand(update, args);
                     break;
-                }
-                case '/model': {
-                    if (args.length === 0) {
-                        throw new Error('Usage: /model <model> after /pick OR /model <threadRef> <model>');
-                    }
-                    const maybeTwoArg = args.length >= 2;
-                    let codexThread;
-                    let model;
-                    if (maybeTwoArg) {
-                        codexThread = await this.resolveCodexThreadRef(args[0] ?? '', update.chatId);
-                        model = args.slice(1).join(' ').trim();
-                    }
-                    else {
-                        codexThread = await this.resolveSelectedCodexThread(update.chatId);
-                        model = (args[0] ?? '').trim();
-                    }
-                    if (!model) {
-                        throw new Error('Model value cannot be empty.');
-                    }
-                    const mapped = this.ensureMappedThread(codexThread);
-                    this.modelPolicy.requestPolicyUpdate({
-                        threadId: mapped.id,
-                        model,
-                        requestedBySteer: false,
-                    });
-                    await this.sendText(update.chatId, `Model queued for next turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${model}`);
+                case '/model':
+                    await this.handleModelCommand(update, args);
                     break;
-                }
-                case '/effort': {
-                    if (args.length === 0) {
-                        throw new Error('Usage: /effort <low|medium|high> after /pick OR /effort <threadRef> <low|medium|high>');
-                    }
-                    const maybeTwoArg = args.length >= 2;
-                    let codexThread;
-                    let effortRaw;
-                    if (maybeTwoArg) {
-                        codexThread = await this.resolveCodexThreadRef(args[0] ?? '', update.chatId);
-                        effortRaw = (args[1] ?? '').trim().toLowerCase();
-                    }
-                    else {
-                        codexThread = await this.resolveSelectedCodexThread(update.chatId);
-                        effortRaw = (args[0] ?? '').trim().toLowerCase();
-                    }
-                    if (!['low', 'medium', 'high'].includes(effortRaw)) {
-                        throw new Error('Effort must be one of: low, medium, high');
-                    }
-                    const effort = effortRaw as ReasoningEffort;
-                    const mapped = this.ensureMappedThread(codexThread);
-                    this.modelPolicy.requestPolicyUpdate({
-                        threadId: mapped.id,
-                        effort,
-                        requestedBySteer: false,
-                    });
-                    await this.sendText(update.chatId, `Reasoning effort queued for next turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${effort}`);
+                case '/effort':
+                    await this.handleEffortCommand(update, args);
                     break;
-                }
-                case '/mode': {
-                    const modeRaw = args[0]?.trim().toLowerCase();
-                    const codexThread = args.length >= 2
-                        ? await this.resolveCodexThreadRef(args[0] ?? '', update.chatId)
-                        : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    if (!modeRaw || (args.length === 1 && !['plan', 'build'].includes(modeRaw))) {
-                        await this.sendText(update.chatId, [
-                            'Current mode',
-                            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                            `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
-                            '',
-                            'Use /mode plan or /mode build.',
-                        ].join('\n'));
-                        break;
-                    }
-                    const mode = (args.length >= 2 ? args[1] : modeRaw) as string;
-                    const parsedMode = this.requireMode(mode);
-                    this.codexBridge.setThreadMode(mapped.id, parsedMode);
-                    await this.sendText(update.chatId, `Mode set for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${parsedMode}`);
+                case '/mode':
+                    await this.handleModeCommand(update, args);
                     break;
-                }
-                case '/skills': {
-                    const codexThread = args[0] ? await this.resolveCodexThreadRef(args[0], update.chatId) : await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const available = await this.codexBridge.listSkillsForThread(mapped.id);
-                    const active = this.codexBridge.getThreadSkills(mapped.id);
-                    await this.sendText(update.chatId, this.renderSkillsText(codexThread, active, available));
+                case '/skills':
+                    await this.handleSkillsCommand(update, args);
                     break;
-                }
-                case '/skill': {
-                    const action = args[0]?.trim().toLowerCase();
-                    if (!action || !['add', 'clear'].includes(action)) {
-                        throw new Error('Usage: /skill add <skillName> OR /skill clear');
-                    }
-                    const codexThread = await this.resolveSelectedCodexThread(update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    if (action === 'clear') {
-                        this.codexBridge.clearThreadSkills(mapped.id);
-                        await this.sendText(update.chatId, `Skills cleared for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}.`);
-                        break;
-                    }
-                    const skillName = args[1]?.trim();
-                    if (!skillName) {
-                        throw new Error('Usage: /skill add <skillName>');
-                    }
-                    const skill = await this.resolveSkillForThread(mapped.id, skillName);
-                    const skills = this.codexBridge.addThreadSkill(mapped.id, skill);
-                    await this.sendText(update.chatId, `Skill added: ${skill.name}\nActive skills: ${this.renderSkillNames(skills)}`);
+                case '/skill':
+                    await this.handleSkillCommand(update, args);
                     break;
-                }
-                case '/approve': {
-                    const approvalId = args[0];
-                    if (!approvalId) {
-                        throw new Error('Usage: /approve <approvalId>');
-                    }
-                    await this.approvalRouter.resolveFromTelegramCallback(`approve:${approvalId}`);
+                case '/approve':
+                    await this.handleApproveCommand(args);
                     break;
-                }
-                case '/deny': {
-                    const approvalId = args[0];
-                    if (!approvalId) {
-                        throw new Error('Usage: /deny <approvalId>');
-                    }
-                    await this.approvalRouter.resolveFromTelegramCallback(`deny:${approvalId}`);
+                case '/deny':
+                    await this.handleDenyCommand(args);
                     break;
-                }
-                case '/status': {
-                    await this.sendText(update.chatId, this.healthOps.statusText());
+                case '/status':
+                    await this.handleStatusCommand(update);
                     break;
-                }
-                case '/approval_demo': {
-                    const selected = this.selectedCodexThreadByChat.get(update.chatId);
-                    if (!selected) {
-                        throw new Error('No selected thread. Use /pick <threadRef> first.');
-                    }
-                    const codexThread = await this.resolveCodexThreadRef(selected, update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    const approvalId = this.approvalRouter.triggerDemoApproval({
-                        threadId: mapped.id,
-                    });
-                    await this.sendText(update.chatId, `Demo approval triggered for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}\nApproval ID: ${approvalId}`);
+                case '/approval_demo':
+                    await this.handleApprovalDemoUnderscoreCommand(update);
                     break;
-                }
-                case '/running': {
-                    const limit = this.parseListLimit(args);
-                    const codexThreads = await this.listSortedCodexThreads();
-                    const windowMs = 30 * 60_000;
-                    const active: Array<{ thread: CodexThread; reason: 'app-server' | 'activity'; mtimeMs?: number }> = [];
-                    for (const thread of codexThreads) {
-                        if (['running', 'waiting_approval', 'waiting_operator'].includes(thread.status)) {
-                            active.push({ thread, reason: 'app-server' });
-                            continue;
-                        }
-                        const activity = this.getCombinedRecentActivity(thread.codexThreadId, windowMs);
-                        if (activity.active) {
-                            active.push({ thread, reason: 'activity', mtimeMs: activity.mtimeMs });
-                        }
-                    }
-                    const visible = active.slice(0, limit);
-                    this.lastCodexListByChat.set(update.chatId, visible.map((item) => item.thread));
-                    this.lastCodexListAtMsByChat.set(update.chatId, Date.now());
-                    if (visible.length === 0) {
-                        await this.sendText(update.chatId, 'No running threads detected (app-server + recent session activity).');
-                        break;
-                    }
-                    const lines = [
-                        `Running Threads (${visible.length})`,
-                        ...visible.map((item, index) => {
-                            const suffix = item.reason === 'activity' && item.mtimeMs
-                                ? ` | active_recent_io ${Math.round((Date.now() - item.mtimeMs) / 1000)}s ago`
-                                : ` | active_via_${item.reason}`;
-                            return `${index + 1}. ${item.thread.codexThreadId.slice(0, 12)} | ${this.compactName(item.thread.threadName ?? '(unnamed)')} | ${item.thread.status} | ${this.compactPath(item.thread.cwd)}${suffix}`;
-                        }),
-                        '',
-                        'Tip: /pick <index from this list> then /last to verify sync.',
-                    ];
-                    await this.sendText(update.chatId, lines.join('\n'));
+                case '/running':
+                    await this.handleRunningCommand(update, args);
                     break;
-                }
-                case '/projects': {
-                    const projects = this.sessionRegistry.listProjects();
-                    this.lastProjectListByChat.set(update.chatId, projects);
-                    await this.sendText(update.chatId, this.renderProjectsText(projects));
+                case '/projects':
+                    await this.handleProjectsCommand(update);
                     break;
-                }
-                case '/new': {
-                    const { projectRef, message } = this.parseNewArgs(args);
-                    const project = this.resolveProjectRef(projectRef, update.chatId);
-                    const threadName = message ? this.compactName(message) : `Telegram ${new Date().toISOString()}`;
-                    const created = await this.codexBridge.createThread({
-                        projectId: project.id,
-                        cwd: project.rootPath,
-                        threadName,
-                        model: project.defaultModel,
-                        effort: project.defaultEffort,
-                    });
-                    this.selectedCodexThreadByChat.set(update.chatId, created.codexThreadId);
-                    this.sessionRegistry.setOperatorFocusThread(created.threadId);
-                    const lines = [
-                        'Thread created',
-                        `Project: ${project.name}`,
-                        `Codex ID: ${created.codexThreadId}`,
-                        `Path: ${this.compactPath(project.rootPath)}`,
-                    ];
-                    if (message) {
-                        const started = await this.codexBridge.startTurn(created.threadId, message);
-                        lines.push(`Turn started: ${started.turnId}`);
-                        lines.push('Use /say <change> while running.');
-                    }
-                    else {
-                        lines.push('Use /run <task> to start work.');
-                    }
-                    await this.sendText(update.chatId, lines.join('\n'));
+                case '/new':
+                    await this.handleNewCommand(update, args);
                     break;
-                }
-                case '/resume': {
-                    const { codexThread, message } = await this.resolveThreadAndMessageForResume(args, update.chatId);
-                    const mapped = this.ensureMappedThread(codexThread);
-                    await this.codexBridge.resumeThread(mapped.id);
-                    this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
-                    this.sessionRegistry.setOperatorFocusThread(mapped.id);
-                    const lines = [
-                        'Thread resumed',
-                        `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
-                        `Codex ID: ${codexThread.codexThreadId}`,
-                        `Path: ${this.compactPath(codexThread.cwd)}`,
-                    ];
-                    if (message) {
-                        const started = await this.codexBridge.startTurn(mapped.id, message);
-                        lines.push(`Turn started: ${started.turnId}`);
-                        lines.push('Use /say <change> while running.');
-                    }
-                    else {
-                        lines.push('Use /run <task> or /say <change request>.');
-                    }
-                    await this.sendText(update.chatId, lines.join('\n'));
+                case '/resume':
+                    await this.handleResumeCommand(update, args);
                     break;
-                }
                 case '/project-rename':
                 case '/git-review':
                 case '/git-commit':
-                case '/git-push': {
-                    await this.sendText(update.chatId, 'This connector is Codex-thread-first. Use: /threads, /pick, /run, /say, /interrupt, /attach, /artifact, /status.');
+                case '/git-push':
+                    await this.handleProjectRenameCommand(update);
                     break;
-                }
-                default: {
-                    await this.sendText(update.chatId, `Unknown command ${command}. Use /help`);
-                }
+                default:
+                    await this.handleUnknownCommand(update, command);
             }
         }
         catch (error) {
@@ -650,6 +196,520 @@ export class TelegramCommandService {
                 });
             }
         }
+    }
+    private async handleHelpCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, this.helpText());
+    }
+    private async handleCodexCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, 'Deprecated. Use /threads (RCC reads live Codex threads automatically).');
+    }
+    private async handleApprovalDemoCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, 'Deprecated. Use /approval_demo.');
+    }
+    private async handleThreadsCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const limit = this.parseListLimit(args);
+        const codexThreads = await this.listSortedCodexThreads();
+        const visible = codexThreads.slice(0, limit);
+        this.lastCodexListByChat.set(update.chatId, visible);
+        this.lastCodexListAtMsByChat.set(update.chatId, Date.now());
+        await this.sendText(update.chatId, this.renderCodexThreadsText(visible, codexThreads.length, update.chatId));
+    }
+    private async handlePickCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        if (args.length === 0) {
+            throw new Error('Usage: /pick <threadRef from /threads>');
+        }
+        const joinedRef = args.join(' ').trim();
+        const firstArg = args[0] ?? '';
+        if ((/^\d+$/.test(firstArg) || this.looksLikeExplicitThreadRef(firstArg)) && args.length !== 1) {
+            throw new Error('Usage: /pick <threadRef from /threads>');
+        }
+        const threadRef = joinedRef;
+        if (!threadRef) {
+            throw new Error('Usage: /pick <threadRef from /threads>');
+        }
+        const codexThread = await this.resolveCodexThreadRef(threadRef, update.chatId);
+        this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
+        const mapped = this.ensureMappedThread(codexThread);
+        this.sessionRegistry.setOperatorFocusThread(mapped.id);
+        try {
+            await this.codexBridge.resumeThread(mapped.id);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            await this.sendText(update.chatId, `Warning: failed to attach to this thread for live events/approvals.\n${message}`);
+        }
+        await this.sendText(update.chatId, [
+            'Thread selected',
+            `ID: ${codexThread.codexThreadId}`,
+            `Name: ${this.compactName(codexThread.threadName ?? '(unnamed)')}`,
+            `Path: ${this.compactPath(codexThread.cwd)}`,
+            'Live updates: enabled for this thread (background threads are muted).',
+            '',
+            'Now use /run <task> or /say <change request>.',
+        ].join('\n'));
+    }
+    private async handleWhereCommand(update: TelegramUpdate): Promise<void> {
+        const selected = this.selectedCodexThreadByChat.get(update.chatId);
+        if (!selected) {
+            await this.sendText(update.chatId, 'No thread selected. Use /threads then /pick <ref>.');
+            return;
+        }
+        const codexThread = await this.resolveCodexThreadRef(selected, update.chatId);
+        await this.sendText(update.chatId, [
+            'Current thread',
+            `ID: ${codexThread.codexThreadId}`,
+            `Name: ${this.compactName(codexThread.threadName ?? '(unnamed)')}`,
+            `Status: ${codexThread.status}`,
+            `Path: ${this.compactPath(codexThread.cwd)}`,
+        ].join('\n'));
+    }
+    private async handleApprovalsCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, this.renderApprovalsText());
+    }
+    private async handleLastCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const override = this.extractThreadOverride(args);
+        const limit = this.parseListLimit(override ? override.args : args);
+        const codexThread = override
+            ? await this.resolveCodexThreadRef(override.threadRef, update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const thread = this.sessionRegistry.findThreadById(mapped.id);
+        const lastMessage = this.repository.listOperatorMessages(mapped.id, 1)[0];
+        const outputs = this.repository.listRecentTurnOutputs(mapped.id, Math.max(1, Math.min(25, limit)));
+        const codexTail = this.codexSessions.readTail(codexThread.codexThreadId);
+        const approvals = this.repository.listApprovals(mapped.id);
+        const pendingApproval = approvals.find((approval) => approval.status === 'pending');
+        const latestResolvedApproval = approvals.find((approval) => approval.status !== 'pending');
+        const sessionActivity = this.codexSessions.isRecentlyActive(codexThread.codexThreadId, 30 * 60_000);
+        const desktopActivity = this.desktopStateMonitor?.getRecentActivity(codexThread.codexThreadId, 30 * 60_000);
+        const rccStatus = thread?.status ?? 'unknown';
+        const activeSignal = ['running', 'waiting_approval', 'waiting_operator'].includes(rccStatus)
+            || sessionActivity.active
+            || Boolean(desktopActivity?.active);
+        const statusMismatch = activeSignal && ['idle', 'completed', 'interrupted', 'failed', 'unknown'].includes(rccStatus);
+        const approvalSource = (codexRequestId?: string): string => {
+            if (!codexRequestId) {
+                return 'n/a';
+            }
+            if (codexRequestId.startsWith('desktop:')) {
+                return 'desktop_log_recovered';
+            }
+            if (codexRequestId.startsWith('demo:')) {
+                return 'demo';
+            }
+            return 'app_server';
+        };
+        const isoAge = (iso?: string): string | undefined => {
+            if (!iso) {
+                return undefined;
+            }
+            const ms = Date.parse(iso);
+            if (!Number.isFinite(ms)) {
+                return undefined;
+            }
+            return this.formatAge(Date.now() - ms);
+        };
+        const body = [
+            `Last for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+            `Codex ID: ${codexThread.codexThreadId}`,
+            `RCC Status: ${rccStatus}`,
+            `Active Turn: ${thread?.activeTurnId ?? 'n/a'}`,
+            '',
+            'Approval:',
+            pendingApproval
+                ? `Pending: ${pendingApproval.id} | ${isoAge(pendingApproval.createdAt) ?? 'n/a'} ago | ${approvalSource(pendingApproval.codexRequestId)} | ${pendingApproval.summary}`
+                : 'Pending: none',
+            latestResolvedApproval
+                ? `Last resolved: ${latestResolvedApproval.id} | ${latestResolvedApproval.status} | ${isoAge(latestResolvedApproval.resolvedAt) ?? 'n/a'} ago | ${approvalSource(latestResolvedApproval.codexRequestId)}`
+                : 'Last resolved: none',
+            '',
+            'Sync Proof:',
+            `Session recent activity: ${sessionActivity.active ? 'yes' : 'no'}${sessionActivity.mtimeMs ? ` (${Math.round((Date.now() - sessionActivity.mtimeMs) / 1000)}s ago)` : ''}`,
+            `Desktop log activity: ${desktopActivity?.active ? 'yes' : 'no'}${desktopActivity?.mtimeMs ? ` (${Math.round((Date.now() - desktopActivity.mtimeMs) / 1000)}s ago)` : ''}`,
+            `Mismatch: ${statusMismatch ? 'active_signals_but_rcc_not_running' : 'none'}`,
+            '',
+            'Last instruction (via RCC/Telegram):',
+            lastMessage
+                ? `[${lastMessage.createdAt}] (${lastMessage.deliveryMode}) ${lastMessage.messageText}`
+                : '(none recorded; this thread may have been started from the desktop app)',
+            '',
+            'Last instruction (Codex session):',
+            codexTail.lastUserText ? codexTail.lastUserText : '(n/a)',
+            '',
+            `RCC recent output (${outputs.length}):`,
+            ...(outputs.length
+                ? outputs
+                    .slice()
+                    .reverse()
+                    .map((out) => `[${out.occurredAt}] (${out.kind}) ${out.text}`)
+                : ['(none observed yet)']),
+            '',
+            'Codex session tail:',
+            codexTail.sessionFile
+                ? `Session: ${this.compactPath(codexTail.sessionFile)}`
+                : 'Session: (not found)',
+            codexTail.sessionMtimeMs ? `Session mtime: ${Math.round((Date.now() - codexTail.sessionMtimeMs) / 1000)}s ago` : 'Session mtime: n/a',
+            codexTail.lastToolCall ? `Last tool: ${codexTail.lastToolCall.name} | ${codexTail.lastToolCall.summary}` : 'Last tool: (n/a)',
+            codexTail.lastToolOutput ? `Last output: ${codexTail.lastToolOutput.summary}` : 'Last output: (n/a)',
+            codexTail.lastAssistantText ? `Last assistant: ${codexTail.lastAssistantText}` : 'Last assistant: (n/a)',
+        ].join('\n');
+        await this.sendText(update.chatId, body);
+    }
+    private async handleThinkingCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const override = this.extractThreadOverride(args);
+        const limit = this.parseListLimit(override ? override.args : args);
+        const codexThread = override
+            ? await this.resolveCodexThreadRef(override.threadRef, update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const summaries = this.repository.listRecentReasoningSummaries(mapped.id, Math.max(1, Math.min(10, limit)));
+        await this.sendText(update.chatId, this.renderReasoningSummaryText(codexThread, summaries));
+    }
+    private async handleRunCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const { codexThread, message, skills } = await this.resolveThreadAndMessageForRun(args, update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
+        this.sessionRegistry.setOperatorFocusThread(mapped.id);
+        if (this.shouldRouteRunAsSteer(codexThread, mapped.id)) {
+            await this.sendText(update.chatId, [
+                'Run request received',
+                `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+                `Codex ID: ${codexThread.codexThreadId}`,
+                'Thread is already active or waiting, so RCC will not start a second turn.',
+                'Routing this as steering guidance instead.',
+                skills?.length
+                    ? 'Note: selected skills apply only to new turns, not steering messages.'
+                    : undefined,
+            ].filter(Boolean).join('\n'));
+            const mode = await this.steeringAgent.steerOrQueue(mapped.id, message);
+            await this.sendText(update.chatId, mode === 'steer_active_turn'
+                ? `Steering sent to active turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`
+                : [
+                    'No active turn was attachable from RCC.',
+                    'Message queued as the next instruction for this thread.',
+                    'If Codex is waiting for approval, use /approvals and resolve that approval first.',
+                ].join('\n'));
+            return;
+        }
+        await this.sendText(update.chatId, [
+            'Run request received',
+            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+            `Codex ID: ${codexThread.codexThreadId}`,
+            'RCC is sending this to Codex now. Live output will stream here when available; /last shows the latest captured result.',
+        ].join('\n'));
+        const started = await this.codexBridge.startTurn(mapped.id, message, { skills });
+        await this.sendText(update.chatId, [
+            'Turn started',
+            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+            `Codex ID: ${codexThread.codexThreadId}`,
+            `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
+            `Skills: ${this.renderSkillNames(this.codexBridge.getThreadSkills(mapped.id), skills)}`,
+            `Turn ID: ${started.turnId}`,
+            '',
+            'Use /say <change> while running.',
+        ].join('\n'));
+    }
+    private async handlePlanCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const { codexThread, message, skills } = await this.resolveThreadAndMessageForRun(args, update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        this.codexBridge.setThreadMode(mapped.id, 'plan');
+        const started = await this.codexBridge.startTurn(mapped.id, message, { mode: 'plan', skills });
+        this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
+        this.sessionRegistry.setOperatorFocusThread(mapped.id);
+        await this.sendText(update.chatId, [
+            'Plan turn started',
+            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+            `Codex ID: ${codexThread.codexThreadId}`,
+            `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
+            `Skills: ${this.renderSkillNames(this.codexBridge.getThreadSkills(mapped.id), skills)}`,
+            `Turn ID: ${started.turnId}`,
+        ].join('\n'));
+    }
+    private async handleSayCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const { codexThread, message } = await this.resolveThreadAndMessageForSay(args, update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const mode = await this.steeringAgent.steerOrQueue(mapped.id, message);
+        this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
+        this.sessionRegistry.setOperatorFocusThread(mapped.id);
+        await this.sendText(update.chatId, mode === 'steer_active_turn'
+            ? `Steering sent to active turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`
+            : `No active turn. Message queued. Start with /run ${codexThread.codexThreadId}`);
+    }
+    private async handleInterruptCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const codexRef = args[0];
+        const codexThread = codexRef
+            ? await this.resolveCodexThreadRef(codexRef, update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        await this.codexBridge.interruptTurn(mapped.id);
+        await this.sendText(update.chatId, `Interrupted active turn for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`);
+    }
+    private async handleAttachCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        if (!update.attachment) {
+            throw new Error('Usage: /attach [threadRef] with file in same message.');
+        }
+        const codexRef = args[0];
+        const codexThread = codexRef
+            ? await this.resolveCodexThreadRef(codexRef, update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const result = await this.fileIntakeAgent.ingestAttachment({
+            threadId: mapped.id,
+            attachment: update.attachment,
+        });
+        await this.sendText(update.chatId, `Attachment ingested for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}\nSaved: ${result.localPath}`);
+    }
+    private async handleArtifactCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const artifactAction = this.parseArtifactAction(args);
+        const codexRef = artifactAction.threadRef;
+        const codexThread = codexRef
+            ? await this.resolveCodexThreadRef(codexRef, update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const cacheKey = `${update.chatId}:${mapped.id}`;
+        if (artifactAction.mode === 'send') {
+            const cached = this.lastArtifactListByChat.get(cacheKey) ?? [];
+            if (cached.length === 0) {
+                throw new Error('No artifact list cached. Run /artifact first.');
+            }
+            const artifact = artifactAction.selection === 'all'
+                ? cached
+                : [this.resolveArtifactSelection(artifactAction.selection, cached)];
+            await this.artifactWatcher.sendArtifacts(mapped.id, artifact.map((item) => item.id));
+            await this.sendText(update.chatId, `Artifact send attempted for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`);
+            return;
+        }
+        this.artifactWatcher.detectArtifacts(mapped.id);
+        const pending = this.artifactWatcher.listPendingArtifacts(mapped.id);
+        this.lastArtifactListByChat.set(cacheKey, pending);
+        await this.sendText(update.chatId, this.renderArtifactListText(codexThread, pending));
+    }
+    private async handleModelCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        if (args.length === 0) {
+            throw new Error('Usage: /model <model> after /pick OR /model <threadRef> <model>');
+        }
+        const maybeTwoArg = args.length >= 2;
+        let codexThread;
+        let model;
+        if (maybeTwoArg) {
+            codexThread = await this.resolveCodexThreadRef(args[0] ?? '', update.chatId);
+            model = args.slice(1).join(' ').trim();
+        }
+        else {
+            codexThread = await this.resolveSelectedCodexThread(update.chatId);
+            model = (args[0] ?? '').trim();
+        }
+        if (!model) {
+            throw new Error('Model value cannot be empty.');
+        }
+        const mapped = this.ensureMappedThread(codexThread);
+        this.modelPolicy.requestPolicyUpdate({
+            threadId: mapped.id,
+            model,
+            requestedBySteer: false,
+        });
+        await this.sendText(update.chatId, `Model queued for next turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${model}`);
+    }
+    private async handleEffortCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        if (args.length === 0) {
+            throw new Error('Usage: /effort <low|medium|high> after /pick OR /effort <threadRef> <low|medium|high>');
+        }
+        const maybeTwoArg = args.length >= 2;
+        let codexThread;
+        let effortRaw;
+        if (maybeTwoArg) {
+            codexThread = await this.resolveCodexThreadRef(args[0] ?? '', update.chatId);
+            effortRaw = (args[1] ?? '').trim().toLowerCase();
+        }
+        else {
+            codexThread = await this.resolveSelectedCodexThread(update.chatId);
+            effortRaw = (args[0] ?? '').trim().toLowerCase();
+        }
+        if (!['low', 'medium', 'high'].includes(effortRaw)) {
+            throw new Error('Effort must be one of: low, medium, high');
+        }
+        const effort = effortRaw as ReasoningEffort;
+        const mapped = this.ensureMappedThread(codexThread);
+        this.modelPolicy.requestPolicyUpdate({
+            threadId: mapped.id,
+            effort,
+            requestedBySteer: false,
+        });
+        await this.sendText(update.chatId, `Reasoning effort queued for next turn on ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${effort}`);
+    }
+    private async handleModeCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const modeRaw = args[0]?.trim().toLowerCase();
+        const codexThread = args.length >= 2
+            ? await this.resolveCodexThreadRef(args[0] ?? '', update.chatId)
+            : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        if (!modeRaw || (args.length === 1 && !['plan', 'build'].includes(modeRaw))) {
+            await this.sendText(update.chatId, [
+                'Current mode',
+                `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+                `Mode: ${this.codexBridge.getThreadMode(mapped.id)}`,
+                '',
+                'Use /mode plan or /mode build.',
+            ].join('\n'));
+            return;
+        }
+        const mode = (args.length >= 2 ? args[1] : modeRaw) as string;
+        const parsedMode = this.requireMode(mode);
+        this.codexBridge.setThreadMode(mapped.id, parsedMode);
+        await this.sendText(update.chatId, `Mode set for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}: ${parsedMode}`);
+    }
+    private async handleSkillsCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const codexThread = args[0] ? await this.resolveCodexThreadRef(args[0], update.chatId) : await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const available = await this.codexBridge.listSkillsForThread(mapped.id);
+        const active = this.codexBridge.getThreadSkills(mapped.id);
+        await this.sendText(update.chatId, this.renderSkillsText(codexThread, active, available));
+    }
+    private async handleSkillCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const action = args[0]?.trim().toLowerCase();
+        if (!action || !['add', 'clear'].includes(action)) {
+            throw new Error('Usage: /skill add <skillName> OR /skill clear');
+        }
+        const codexThread = await this.resolveSelectedCodexThread(update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        if (action === 'clear') {
+            this.codexBridge.clearThreadSkills(mapped.id);
+            await this.sendText(update.chatId, `Skills cleared for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}.`);
+            return;
+        }
+        const skillName = args[1]?.trim();
+        if (!skillName) {
+            throw new Error('Usage: /skill add <skillName>');
+        }
+        const skill = await this.resolveSkillForThread(mapped.id, skillName);
+        const skills = this.codexBridge.addThreadSkill(mapped.id, skill);
+        await this.sendText(update.chatId, `Skill added: ${skill.name}\nActive skills: ${this.renderSkillNames(skills)}`);
+    }
+    private async handleApproveCommand(args: string[]): Promise<void> {
+        const approvalId = args[0];
+        if (!approvalId) {
+            throw new Error('Usage: /approve <approvalId>');
+        }
+        await this.approvalRouter.resolveFromTelegramCallback(`approve:${approvalId}`);
+    }
+    private async handleDenyCommand(args: string[]): Promise<void> {
+        const approvalId = args[0];
+        if (!approvalId) {
+            throw new Error('Usage: /deny <approvalId>');
+        }
+        await this.approvalRouter.resolveFromTelegramCallback(`deny:${approvalId}`);
+    }
+    private async handleStatusCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, this.healthOps.statusText());
+    }
+    private async handleApprovalDemoUnderscoreCommand(update: TelegramUpdate): Promise<void> {
+        const selected = this.selectedCodexThreadByChat.get(update.chatId);
+        if (!selected) {
+            throw new Error('No selected thread. Use /pick <threadRef> first.');
+        }
+        const codexThread = await this.resolveCodexThreadRef(selected, update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        const approvalId = this.approvalRouter.triggerDemoApproval({
+            threadId: mapped.id,
+        });
+        await this.sendText(update.chatId, `Demo approval triggered for ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}\nApproval ID: ${approvalId}`);
+    }
+    private async handleRunningCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const limit = this.parseListLimit(args);
+        const codexThreads = await this.listSortedCodexThreads();
+        const windowMs = 30 * 60_000;
+        const active: Array<{ thread: CodexThread; reason: 'app-server' | 'activity'; mtimeMs?: number }> = [];
+        for (const thread of codexThreads) {
+            if (['running', 'waiting_approval', 'waiting_operator'].includes(thread.status)) {
+                active.push({ thread, reason: 'app-server' });
+                continue;
+            }
+            const activity = this.getCombinedRecentActivity(thread.codexThreadId, windowMs);
+            if (activity.active) {
+                active.push({ thread, reason: 'activity', mtimeMs: activity.mtimeMs });
+            }
+        }
+        const visible = active.slice(0, limit);
+        this.lastCodexListByChat.set(update.chatId, visible.map((item) => item.thread));
+        this.lastCodexListAtMsByChat.set(update.chatId, Date.now());
+        if (visible.length === 0) {
+            await this.sendText(update.chatId, 'No running threads detected (app-server + recent session activity).');
+            return;
+        }
+        const lines = [
+            `Running Threads (${visible.length})`,
+            ...visible.map((item, index) => {
+                const suffix = item.reason === 'activity' && item.mtimeMs
+                    ? ` | active_recent_io ${Math.round((Date.now() - item.mtimeMs) / 1000)}s ago`
+                    : ` | active_via_${item.reason}`;
+                return `${index + 1}. ${item.thread.codexThreadId.slice(0, 12)} | ${this.compactName(item.thread.threadName ?? '(unnamed)')} | ${item.thread.status} | ${this.compactPath(item.thread.cwd)}${suffix}`;
+            }),
+            '',
+            'Tip: /pick <index from this list> then /last to verify sync.',
+        ];
+        await this.sendText(update.chatId, lines.join('\n'));
+    }
+    private async handleProjectsCommand(update: TelegramUpdate): Promise<void> {
+        const projects = this.sessionRegistry.listProjects();
+        this.lastProjectListByChat.set(update.chatId, projects);
+        await this.sendText(update.chatId, this.renderProjectsText(projects));
+    }
+    private async handleNewCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const { projectRef, message } = this.parseNewArgs(args);
+        const project = this.resolveProjectRef(projectRef, update.chatId);
+        const threadName = message ? this.compactName(message) : `Telegram ${new Date().toISOString()}`;
+        const created = await this.codexBridge.createThread({
+            projectId: project.id,
+            cwd: project.rootPath,
+            threadName,
+            model: project.defaultModel,
+            effort: project.defaultEffort,
+        });
+        this.selectedCodexThreadByChat.set(update.chatId, created.codexThreadId);
+        this.sessionRegistry.setOperatorFocusThread(created.threadId);
+        const lines = [
+            'Thread created',
+            `Project: ${project.name}`,
+            `Codex ID: ${created.codexThreadId}`,
+            `Path: ${this.compactPath(project.rootPath)}`,
+        ];
+        if (message) {
+            const started = await this.codexBridge.startTurn(created.threadId, message);
+            lines.push(`Turn started: ${started.turnId}`);
+            lines.push('Use /say <change> while running.');
+        }
+        else {
+            lines.push('Use /run <task> to start work.');
+        }
+        await this.sendText(update.chatId, lines.join('\n'));
+    }
+    private async handleResumeCommand(update: TelegramUpdate, args: string[]): Promise<void> {
+        const { codexThread, message } = await this.resolveThreadAndMessageForResume(args, update.chatId);
+        const mapped = this.ensureMappedThread(codexThread);
+        await this.codexBridge.resumeThread(mapped.id);
+        this.selectedCodexThreadByChat.set(update.chatId, codexThread.codexThreadId);
+        this.sessionRegistry.setOperatorFocusThread(mapped.id);
+        const lines = [
+            'Thread resumed',
+            `Thread: ${this.compactName(codexThread.threadName ?? codexThread.codexThreadId)}`,
+            `Codex ID: ${codexThread.codexThreadId}`,
+            `Path: ${this.compactPath(codexThread.cwd)}`,
+        ];
+        if (message) {
+            const started = await this.codexBridge.startTurn(mapped.id, message);
+            lines.push(`Turn started: ${started.turnId}`);
+            lines.push('Use /say <change> while running.');
+        }
+        else {
+            lines.push('Use /run <task> or /say <change request>.');
+        }
+        await this.sendText(update.chatId, lines.join('\n'));
+    }
+    private async handleProjectRenameCommand(update: TelegramUpdate): Promise<void> {
+        await this.sendText(update.chatId, 'This connector is Codex-thread-first. Use: /threads, /pick, /run, /say, /interrupt, /attach, /artifact, /status.');
+    }
+    private async handleUnknownCommand(update: TelegramUpdate, command: string): Promise<void> {
+        await this.sendText(update.chatId, `Unknown command ${command}. Use /help`);
     }
     shouldRouteRunAsSteer(codexThread: CodexThread, threadId: string): boolean {
         const activeStatuses: ThreadStatus[] = ['running', 'waiting_approval', 'waiting_operator'];
