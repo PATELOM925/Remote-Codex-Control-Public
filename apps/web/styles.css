@@ -200,6 +200,8 @@ code { color: var(--blue); overflow-wrap: anywhere; }
   :root { --panel-pad: 16px; }
   main { width: min(100% - 20px, 1180px); padding: 18px 0; }
   .topbar { align-items: center; border-radius: 22px; }
+  .app-header { flex-direction: column; align-items: stretch; }
+  .app-actions { justify-content: flex-start; }
   .topnav { justify-content: flex-start; overflow-x: auto; }
   .topnav a { padding: 8px 10px; }
   .hero { min-height: auto; gap: 18px; }
