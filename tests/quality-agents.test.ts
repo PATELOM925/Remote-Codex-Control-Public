@@ -408,11 +408,32 @@ const makeRepository = () => {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
   runMigrations(db);
-  return new RccRepository(db);
+  return { db, repository: new RccRepository(db) };
+};
+
+const makeThreadWithPendingApprovals = (repository: RccRepository, approvalIds: string[]) => {
+  repository.insertProject({ id: 'project-1', name: 'app', rootPath: '/work/app', isEnabled: true });
+  repository.insertThread({
+    id: 'thread-1',
+    projectId: 'project-1',
+    codexThreadId: 'codex-1',
+    cwd: '/work/app',
+    status: 'idle',
+  });
+  for (const id of approvalIds) {
+    repository.createApproval({
+      id,
+      threadId: 'thread-1',
+      codexRequestId: `request-${id}`,
+      actionType: 'command',
+      summary: id,
+      status: 'pending',
+    });
+  }
 };
 
 test('a project name clash raises an error instead of deleting the existing project', () => {
-  const repository = makeRepository();
+  const { repository } = makeRepository();
   repository.insertProject({ id: 'project-a', name: 'app', rootPath: '/work/a', isEnabled: true });
 
   assert.throws(
@@ -447,4 +468,31 @@ test('a proposed project name avoids the name of a disabled project', async () =
   } finally {
     daemon.stop();
   }
+});
+
+test('superseding pending approvals is all or nothing', () => {
+  const { db, repository } = makeRepository();
+  makeThreadWithPendingApprovals(repository, ['approval-a', 'approval-b']);
+  // Fails the second update, after the first one has run.
+  db.exec("CREATE TRIGGER fail_second BEFORE UPDATE ON approvals WHEN NEW.id = 'approval-b' BEGIN SELECT RAISE(ABORT, 'forced failure'); END;");
+
+  assert.throws(() => repository.supersedePendingApprovals('thread-1', 'approval-new'), /forced failure/);
+
+  assert.equal(repository.findApprovalById('approval-a')?.status, 'pending');
+  assert.equal(repository.findApprovalById('approval-b')?.status, 'pending');
+});
+
+test('findSupersedingApprovalId finds an old superseded event beyond the newest 200', () => {
+  const { db, repository } = makeRepository();
+  const insertEvent = db.prepare(
+    `INSERT INTO event_log (event_id, event_type, occurred_at, payload_json, created_at)
+     VALUES (?, 'ApprovalSuperseded', ?, ?, ?)`,
+  );
+  const occurredAt = new Date(0).toISOString();
+  insertEvent.run('event-old', occurredAt, JSON.stringify({ approvalId: 'approval-old', supersededByApprovalId: 'approval-newer' }), occurredAt);
+  for (let index = 0; index < 250; index += 1) {
+    insertEvent.run(`event-${index}`, occurredAt, JSON.stringify({ approvalId: `other-${index}`, supersededByApprovalId: 'approval-x' }), occurredAt);
+  }
+
+  assert.equal(repository.findSupersedingApprovalId('approval-old'), 'approval-newer');
 });

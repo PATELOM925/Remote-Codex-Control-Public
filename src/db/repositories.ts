@@ -452,27 +452,18 @@ export class RccRepository {
    * superseded events are searched.
    */
   findSupersedingApprovalId(approvalId: string): string | undefined {
-    const rows = this.db
+    // CASE stops json_extract from running on a malformed payload, which is then skipped.
+    const row = this.db
       .prepare(
-        `SELECT payload_json
+        `SELECT json_extract(payload_json, '$.supersededByApprovalId') AS superseded_by
          FROM event_log
          WHERE event_type = 'ApprovalSuperseded'
+           AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json, '$.approvalId') END = ?
          ORDER BY sequence DESC
-         LIMIT 200`
+         LIMIT 1`
       )
-      .all() as Array<{ payload_json: string }>;
-
-    for (const row of rows) {
-      try {
-        const payload = JSON.parse(row.payload_json) as { approvalId?: string; supersededByApprovalId?: string };
-        if (payload.approvalId === approvalId) {
-          return payload.supersededByApprovalId;
-        }
-      } catch {
-        // Skip rows with malformed JSON. The event log is append-only, so such rows are kept.
-      }
-    }
-    return undefined;
+      .get(approvalId) as { superseded_by: string | null } | undefined;
+    return row?.superseded_by ?? undefined;
   }
 
   /**
@@ -488,8 +479,16 @@ export class RccRepository {
           .prepare('SELECT id FROM approvals WHERE thread_id = ? AND status = ? AND id != ?')
           .all(threadId, 'pending', keepApprovalId)) as Array<{ id: string }>;
 
-    for (const row of rows) {
-      this.db.prepare('UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?').run('superseded', nowIso(), row.id);
+    // One transaction, so a failure part-way leaves every approval pending.
+    this.db.exec('BEGIN;');
+    try {
+      for (const row of rows) {
+        this.db.prepare('UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ?').run('superseded', nowIso(), row.id);
+      }
+      this.db.exec('COMMIT;');
+    } catch (error) {
+      this.db.exec('ROLLBACK;');
+      throw error;
     }
 
     return rows.map((row) => row.id);
