@@ -10,6 +10,7 @@ import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.
 import type { RccConfig } from '../src/config.js';
 import type { AppServerEvent } from '../src/contracts/codex.js';
 import type { ApprovalRecord } from '../src/db/repositories.js';
+import { runWizard, type WizardDeps } from '../scripts/setup-wizard.js';
 import { buildApprovalDetails, formatApprovalDetailsForTelegram } from '../src/services/approvalDetails.js';
 import { Logger } from '../src/logger.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
@@ -295,4 +296,39 @@ test('every command listed on an approval card is one the bot handles', async ()
   } finally {
     daemon.stop();
   }
+});
+
+test('setup states the Node requirement it read from package.json', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-node-range-'));
+  fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify({ engines: { node: '>=24.1.0' } }));
+  const logs: string[] = [];
+  const deps: WizardDeps = {
+    io: {
+      ask: async () => '',
+      askSecret: async () => '',
+      log: (line) => {
+        logs.push(line);
+      },
+    },
+    fetch: (async () => {
+      throw new Error('fetch must not run');
+    }) as typeof fetch,
+    fs,
+    env: {},
+    clock: { now: () => Date.now() },
+    home: rootDir,
+    startDir: rootDir,
+    rootDir,
+    setupPath: path.join(rootDir, 'setup.md'),
+    nodeVersion: '22.22.2',
+    now: () => new Date(),
+    checkCodex: async () => undefined,
+    isGitIgnored: async () => true,
+    startRcc: async () => 0,
+  };
+
+  const code = await runWizard([], deps);
+
+  assert.equal(code, 1);
+  assert.deepEqual(logs, ['Node 22.22.2 is too old for RCC. Install Node >=24.1.0, then run npm run setup again.']);
 });

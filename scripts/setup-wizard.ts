@@ -461,7 +461,7 @@ const promptForProjects = async (opts: ParsedArgs, deps: WizardDeps): Promise<st
 const runSteps = async (opts: ParsedArgs, deps: WizardDeps): Promise<number> => {
   const requiredNode = readEngineRange(deps);
   if (!isNodeVersionSupported(deps.nodeVersion, requiredNode)) {
-    deps.io.log(`Node ${deps.nodeVersion} is too old for RCC. Install Node 22.5 or newer, then run npm run setup again.`);
+    deps.io.log(`Node ${deps.nodeVersion} is too old for RCC. Install Node ${requiredNode}, then run npm run setup again.`);
     return 1;
   }
 
