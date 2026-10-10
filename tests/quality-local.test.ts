@@ -330,3 +330,31 @@ test('telegram chat id script keeps the bot token out of curl arguments', async 
   assert.ok(!args.includes('getUpdates'), 'request URL must not appear in curl arguments');
   assert.equal(stdin, `url = "https://api.telegram.org/bot${fakeToken}/getUpdates?limit=50&timeout=30"\n`);
 });
+
+test('relay handoff keeps backslashes in values when applying them to setup.md', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-relay-handoff-'));
+  const scriptsDir = path.join(root, 'scripts');
+  fs.mkdirSync(scriptsDir);
+  fs.mkdirSync(path.join(root, '.dist', 'backups'), { recursive: true });
+  fs.copyFileSync(path.join(repoRoot, 'scripts', 'apply_relay_handoff.sh'), path.join(scriptsDir, 'apply_relay_handoff.sh'));
+  fs.writeFileSync(path.join(root, 'setup.md'), 'RCC_TELEGRAM_BOT_TOKEN=test-bot-token\nRCC_RELAY_MAC_ID=old-mac\n');
+  // The backslash-t must reach setup.md as two characters, not as a tab.
+  const handoff = path.join(root, 'handoff.txt');
+  fs.writeFileSync(handoff, [
+    'Mac setup.md:',
+    'RCC_RELAY_MAC_ID=fake\\tmac',
+    'RCC_RELAY_BASE_URL=https://relay.example.test',
+    'RCC_RELAY_MAC_TOKEN=test-mac-relay-token',
+    '',
+  ].join('\n'));
+
+  const result = spawnSync('bash', [path.join(scriptsDir, 'apply_relay_handoff.sh'), handoff], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  const lines = fs.readFileSync(path.join(root, 'setup.md'), 'utf8').split('\n');
+  assert.ok(lines.includes('RCC_RELAY_MAC_ID=fake\\tmac'), 'value must keep its literal backslash-t');
+  assert.ok(!lines.some((line) => line.includes('\t')), 'no tab character may be written');
+  assert.ok(lines.includes('RCC_RELAY_BASE_URL=https://relay.example.test'));
+  assert.ok(lines.includes('RCC_RELAY_MAC_TOKEN=test-mac-relay-token'));
+  assert.ok(lines.includes('RCC_TELEGRAM_BOT_TOKEN=test-bot-token'));
+});

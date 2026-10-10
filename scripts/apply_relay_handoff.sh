@@ -107,8 +107,9 @@ apply_kv() {
   local value="$2"
   local tmp
   tmp="$(mktemp)"
-  awk -v key="$key" -v value="$value" '
-    BEGIN { updated = 0 }
+  # The value goes through the environment because awk -v expands backslash escapes.
+  RCC_KV_VALUE="$value" awk -v key="$key" '
+    BEGIN { updated = 0; value = ENVIRON["RCC_KV_VALUE"] }
     $0 ~ "^" key "=" {
       print key "=" value
       updated = 1
