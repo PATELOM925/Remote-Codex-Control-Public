@@ -155,3 +155,20 @@ test('a successful desktop UI approval call publishes the forwarded event once',
     daemon.stop();
   }
 });
+
+test('stopping the daemon closes the App Server client exactly once', async () => {
+  class ClosableAppServerClient extends MockAppServerClient {
+    closeCalls = 0;
+
+    close(): void {
+      this.closeCalls += 1;
+    }
+  }
+
+  const appServerClient = new ClosableAppServerClient();
+  const { daemon } = await startDaemon({ appServerClient });
+
+  daemon.stop();
+
+  assert.equal(appServerClient.closeCalls, 1);
+});

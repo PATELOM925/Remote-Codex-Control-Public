@@ -374,6 +374,9 @@ export class RccDaemon {
     this.desktopStateMonitor.stop();
     this.relayClient.stop();
     void this.localStatusServer.stop();
+    void Promise.resolve(this.appServerClient.close?.()).catch((error: unknown) => {
+      this.logger.warn('app-server-close-failed', { reason: error instanceof Error ? error.message : String(error) });
+    });
     this.dbManager.checkpoint('FULL');
     this.dbManager.close();
     this.releaseSingleInstanceLock();

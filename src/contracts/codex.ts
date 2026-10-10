@@ -108,4 +108,6 @@ export interface AppServerClient {
   resolveApproval(requestId: string, decision: 'approved' | 'denied'): Promise<{ ackId: string }>;
   /** Optional. When it is absent, the bridge reports no skills for a thread. */
   listSkills?(cwd: string): Promise<CodexSkillRef[]>;
+  /** Optional. Called once when the daemon stops, to end the connection. */
+  close?(): void | Promise<void>;
 }
