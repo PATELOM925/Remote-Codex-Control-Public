@@ -9,7 +9,9 @@ import type { RelayCommand, RelayCommandResult, RelayPollResponse } from '../rel
 import type { RccRepository } from '../db/repositories.js';
 import type { ApprovalStatus, ReasoningEffort } from '../contracts/states.js';
 
+// Max size of one relay upload file.
 const RELAY_FILE_UPLOAD_LIMIT_BYTES = 512 * 1024;
+// Max files in one relay upload command.
 const RELAY_FILE_UPLOAD_LIMIT_COUNT = 3;
 const RELAY_DEPLOYMENT_DISABLED_BACKOFF_MS = 60_000;
 const RELAY_TRANSIENT_HTTP_BACKOFF_MS = 30_000;

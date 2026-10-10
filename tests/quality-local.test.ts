@@ -232,3 +232,47 @@ test('web login and bearer checks accept only the exact configured token', async
     daemon.stop();
   }
 });
+
+test('web attachment request rejects a sixth file', async () => {
+  const webToken = 'fake-web-token-0003';
+  const { daemon, project } = await createDaemon({
+    localStatusEnabled: true,
+    localStatusHost: '127.0.0.1',
+    localStatusPort: 0,
+    webControlEnabled: true,
+    webAuthToken: webToken,
+  });
+  try {
+    const url = daemon.localStatusServer.url();
+    assert.ok(url);
+    const created = await daemon.codexBridge.createThread({
+      projectId: project.id,
+      cwd: project.rootPath,
+      threadName: 'Attachment Limit Thread',
+    });
+    const file = { name: 'note.txt', mimeType: 'text/plain', sizeBytes: 1, base64: 'YQ==' };
+    const response = await fetch(`${url}/api/threads/${encodeURIComponent(created.threadId)}/attachments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${webToken}` },
+      body: JSON.stringify({ files: Array.from({ length: 6 }, () => file) }),
+    });
+    assert.equal(((await response.json()) as { error?: string }).error, 'At most 5 files may be uploaded in one request.');
+  } finally {
+    daemon.stop();
+  }
+});
+
+test('relay upload rejects a fourth file per command', async () => {
+  const { daemon } = await createDaemon({});
+  try {
+    // parseAttachmentMessage is private; the test calls it to check the count limit alone.
+    const relayClient = daemon.relayClient as unknown as { parseAttachmentMessage(value: string | undefined): unknown };
+    const message = (count: number) => JSON.stringify({
+      files: Array.from({ length: count }, (_, index) => ({ name: `note-${index}.txt`, sizeBytes: 1, base64: 'YQ==' })),
+    });
+    assert.equal((relayClient.parseAttachmentMessage(message(3)) as unknown[]).length, 3);
+    assert.throws(() => relayClient.parseAttachmentMessage(message(4)), /Relay upload accepts at most 3 files per command\./);
+  } finally {
+    daemon.stop();
+  }
+});

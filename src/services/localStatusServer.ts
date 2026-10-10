@@ -33,6 +33,9 @@ interface DashboardEvent {
   summary: string;
 }
 
+// Max files in one web attachment request.
+const WEB_ATTACHMENT_LIMIT_COUNT = 5;
+
 // timingSafeEqual throws on unequal lengths, so the length check comes first.
 const tokensMatch = (candidate: string, expected: string): boolean => {
   const candidateBytes = Buffer.from(candidate);
@@ -1299,8 +1302,8 @@ export class LocalStatusServer {
     if (!Array.isArray(body.files) || body.files.length === 0) {
       throw new Error('attachments endpoint requires files array.');
     }
-    if (body.files.length > 5) {
-      throw new Error('At most 5 files may be uploaded in one request.');
+    if (body.files.length > WEB_ATTACHMENT_LIMIT_COUNT) {
+      throw new Error(`At most ${WEB_ATTACHMENT_LIMIT_COUNT} files may be uploaded in one request.`);
     }
     return body.files.map((item) => {
       const record = this.asRecord(item);
