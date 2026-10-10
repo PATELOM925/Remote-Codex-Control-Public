@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
+import { TelegramBotApiClient } from '../src/adapters/telegram/telegramBotApiClient.js';
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { AppServerEvent } from '../src/contracts/codex.js';
@@ -357,4 +358,23 @@ test('a symlinked cwd maps to the same project with a slugged id', async () => {
   } finally {
     daemon.stop();
   }
+});
+
+test('sendDocument names the upload after the file base name', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-send-doc-'));
+  const filePath = path.join(dir, 'reports', 'summary.txt');
+  fs.mkdirSync(path.dirname(filePath));
+  fs.writeFileSync(filePath, 'summary');
+  const bodies: FormData[] = [];
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init?: RequestInit) => {
+    bodies.push(init?.body as FormData);
+    return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  const client = new TelegramBotApiClient('000000000:test-token', 'disabled', 1500, new Logger('error'));
+
+  await client.sendDocument('test-chat', filePath);
+
+  const document = bodies[0]?.get('document');
+  assert.ok(document instanceof File);
+  assert.equal(document.name, 'summary.txt');
 });

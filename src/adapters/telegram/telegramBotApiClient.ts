@@ -51,7 +51,7 @@ export class TelegramBotApiClient implements TelegramClient {
   private pollingInitialized = false;
 
   constructor(
-    private readonly token: string,
+    token: string,
     private readonly transport: 'long_polling' | 'disabled' = 'long_polling',
     private readonly pollingIntervalMs = 1500,
     private readonly logger?: Logger,
@@ -114,7 +114,7 @@ export class TelegramBotApiClient implements TelegramClient {
     const form = new FormData();
     form.set('chat_id', chatId);
     const buffer = await fsp.readFile(filePath);
-    form.set('document', new Blob([buffer]), filePath.split('/').pop() ?? 'artifact.bin');
+    form.set('document', new Blob([buffer]), path.basename(filePath) || 'artifact.bin');
     if (caption) {
       form.set('caption', caption);
     }
