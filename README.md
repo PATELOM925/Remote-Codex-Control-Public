@@ -209,7 +209,7 @@ Known limits:
 
 The full threat model is in [SECURITY.md](./SECURITY.md) and [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md).
 
-## Project role
+## My role
 
 Solo project: design, implementation, security model and tests.
 
