@@ -321,3 +321,42 @@ test('approval request dropped before its thread is mapped is processed on a rep
     daemon.stop();
   }
 });
+
+test('a failed App Server approval call leaves the approval pending and publishes no forwarded event', async () => {
+  class UnavailableApprovalClient extends MockAppServerClient {
+    override async resolveApproval(): Promise<{ ackId: string }> {
+      throw new Error('app server unavailable');
+    }
+  }
+
+  const appServerClient = new UnavailableApprovalClient();
+  const { daemon, baseDir } = await startDaemon(appServerClient);
+  try {
+    const thread = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-approval',
+      cwd: baseDir,
+      threadName: 'Approval thread',
+      status: 'idle',
+    });
+    appServerClient.emitApprovalRequest({
+      requestId: 'req-unavailable',
+      codexThreadId: 'codex-approval',
+      actionType: 'command' as const,
+      summary: 'run tests',
+      scope: 'once' as const,
+    });
+    await waitForAsyncHandlers();
+    const [approval] = daemon.repository.listApprovals(thread.id);
+    assert.ok(approval);
+
+    await assert.rejects(daemon.codexBridge.resolveApproval(approval.id, 'approved'), /app server unavailable/);
+
+    assert.equal(daemon.repository.findApprovalById(approval.id)?.status, 'pending');
+    const forwarded = daemon.dbManager.db
+      .prepare("SELECT COUNT(*) AS total FROM event_log WHERE event_type = 'ApprovalResolutionForwarded'")
+      .get() as { total: number };
+    assert.equal(forwarded.total, 0);
+  } finally {
+    daemon.stop();
+  }
+});

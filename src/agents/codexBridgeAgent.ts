@@ -361,9 +361,9 @@ export class CodexBridgeAgent {
         turnId: approval.turnId,
       },
     );
-    this.publish(forwardedEvent);
-
+    // Publish only after the App Server accepts the decision. A failed call leaves the approval pending.
     const ack = await this.appServerClient.resolveApproval(approval.codexRequestId, decision);
+    this.publish(forwardedEvent);
     this.repository.updateApprovalStatus(approvalId, decision as ApprovalStatus);
 
     const ackEvent = this.journal.createEnvelope<ApprovalResolutionAckedPayload>(
