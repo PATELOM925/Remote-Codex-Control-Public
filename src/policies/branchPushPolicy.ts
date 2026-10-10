@@ -8,6 +8,7 @@ export class BranchPushPolicy implements Policy<BranchPushContext> {
   readonly id = 'branch-push-guardrail-v1';
 
   evaluate(context: BranchPushContext) {
+    // Ignore case and surrounding spaces, so variants of main are blocked too.
     const normalized = context.targetBranch.trim().toLowerCase();
 
     if (normalized === 'main') {

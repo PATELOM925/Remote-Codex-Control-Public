@@ -286,6 +286,8 @@ export class FileIntakeAgent {
     return { attachmentId, localPath };
   }
 
+  // Replace path separators and other unsafe characters, so the name stays
+  // inside the thread upload directory.
   private sanitizeFilename(fileName: string): string {
     const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     return `${Date.now()}_${sanitized}`;

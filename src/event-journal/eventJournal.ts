@@ -121,6 +121,7 @@ export class EventJournal {
     return Boolean(row);
   }
 
+  /** Records a key for a source. Recording a key that already exists has no effect. */
   rememberIdempotency(source: string, key: string): void {
     this.db
       .prepare('INSERT OR IGNORE INTO idempotency_keys (idempotency_key, source, created_at) VALUES (?, ?, ?)')
@@ -142,6 +143,7 @@ export class EventJournal {
     const row = this.db
       .prepare('SELECT last_event_id FROM stream_checkpoints WHERE checkpoint_name = ?')
       .get(name) as { last_event_id: string } | undefined;
+    // 'none' is the placeholder written by migrations. It means the checkpoint has no event yet.
     if (!row || row.last_event_id === 'none') {
       return undefined;
     }

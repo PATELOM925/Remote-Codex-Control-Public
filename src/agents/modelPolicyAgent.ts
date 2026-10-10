@@ -55,6 +55,7 @@ export class ModelPolicyAgent {
       throw new Error(decision.reason);
     }
 
+    // The change is stored as an override and applied on the next turn.
     this.repository.saveModelOverride(input.threadId, input.model, input.effort);
   }
 

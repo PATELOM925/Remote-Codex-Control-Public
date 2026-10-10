@@ -15,6 +15,9 @@ export interface SentDocument {
   caption?: string;
 }
 
+/**
+ * In-memory Telegram double. It records outgoing calls so tests can assert on them.
+ */
 export class MockTelegramClient implements TelegramClient {
   private readonly emitter = new EventEmitter();
   private readonly fileSeeds = new Map<string, string>();

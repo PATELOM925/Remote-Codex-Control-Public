@@ -13,6 +13,10 @@ const looksSecretLike = (value: string): boolean => {
   return hasLetter && (hasDigit || hasSymbol);
 };
 
+/**
+ * Replaces known secret formats with placeholders. Long opaque strings are redacted only when
+ * they mix letters with digits or symbols. Patterns run in order, so specific formats go first.
+ */
 export const redactSensitiveText = (input: string): string =>
   input
     .replace(PRIVATE_KEY_BLOCK, '[REDACTED_PRIVATE_KEY]')

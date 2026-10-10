@@ -51,8 +51,8 @@ export class ArtifactWatcherAgent {
       throw new Error(`Unknown project ${thread.projectId}`);
     }
 
-    // Safety: do not scan the entire project/workspace (it can spam Telegram with unrelated files).
-    // v1/v2 default behavior is to only detect artifacts produced into RCC's artifacts root.
+    // Scan only the thread artifact directory. Scanning the whole workspace
+    // would announce unrelated files to Telegram.
     const artifactRoot = path.join(this.config.artifactsRoot, threadId);
     if (!fs.existsSync(artifactRoot)) {
       return { count: 0 };
@@ -250,6 +250,7 @@ export class ArtifactWatcherAgent {
         continue;
       }
 
+      // Over the direct upload limit, try a zip first, then fall back to a manifest.
       const zippedPath = this.tryZipArtifact(artifact.localPath);
       if (zippedPath && fs.existsSync(zippedPath)) {
         const zippedSize = fs.statSync(zippedPath).size;
@@ -328,6 +329,7 @@ export class ArtifactWatcherAgent {
   }
 
   private evaluateArtifactPath(threadId: string, artifactPath: string): { allowed: boolean; reason: string; policyId: string } {
+    // The check is lexical. Symbolic links are not resolved.
     const resolvedPath = path.resolve(artifactPath);
     const resolvedArtifactRoot = path.resolve(this.config.artifactsRoot, threadId);
     const insideThreadArtifactRoot = resolvedPath.startsWith(`${resolvedArtifactRoot}${path.sep}`);
@@ -350,6 +352,7 @@ export class ArtifactWatcherAgent {
   private tryZipArtifact(filePath: string): string | undefined {
     const zipPath = `${filePath}.zip`;
     try {
+      // execFileSync passes arguments without a shell, so file names are not interpreted.
       execFileSync('zip', ['-j', '-q', zipPath, filePath]);
       return zipPath;
     } catch {

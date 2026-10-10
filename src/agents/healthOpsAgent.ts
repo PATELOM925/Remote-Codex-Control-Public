@@ -186,6 +186,7 @@ export class HealthOpsAgent {
         continue;
       }
 
+      // Desktop-recovered approvals have no expiry, so they expire by age instead.
       if (!approval.codexRequestId.startsWith('desktop:')) {
         continue;
       }

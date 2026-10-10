@@ -144,11 +144,8 @@ export class CodexBridgeAgent {
     }
     let updatedThread = this.mustFindThread(threadId);
 
-    // Existing Codex threads discovered from app-server may need an explicit resume
-    // before turn/start is accepted by the transport. Historical resumes can
-    // time out on large App Server histories; continue and let turn/start be
-    // the authoritative success/failure so Telegram/Web are not blocked by a
-    // non-critical attach failure.
+    // Threads discovered from the App Server may need a resume before turn/start is accepted.
+    // A failed resume is logged and skipped, because turn/start is the authoritative result.
     await this.tryResumeThreadBeforeTurn(thread);
     updatedThread = this.mustFindThread(threadId);
 
@@ -254,6 +251,7 @@ export class CodexBridgeAgent {
         throw error;
       }
 
+      // The App Server lost track of the thread. Resume it and send the message as a new turn.
       this.logger.warn('codex-steer-thread-not-found-recovering', {
         threadId,
         codexThreadId: thread.codexThreadId,
@@ -343,6 +341,7 @@ export class CodexBridgeAgent {
       throw new Error(`Unknown approval ${approvalId}`);
     }
 
+    // Only a pending approval can be forwarded. This blocks a second decision for the same request.
     if (approval.status !== 'pending') {
       throw new Error(`Cannot resolve approval ${approvalId} with status ${approval.status}`);
     }
@@ -569,8 +568,8 @@ export class CodexBridgeAgent {
             return;
           }
 
-          // Some Codex thread listings report status=idle even during an active turn.
-          // If we observe a stream event, treat it as evidence of an active turn.
+          // Some thread listings report idle during an active turn, so a stream event
+          // counts as evidence that a turn is running.
           if (event.turnId && !thread.activeTurnId) {
             this.sessionRegistry.setActiveTurn(thread.id, event.turnId);
           }
@@ -609,6 +608,7 @@ export class CodexBridgeAgent {
             return;
           }
 
+          // Reasoning text can echo secrets, so redact it before it is stored or sent.
           const text = redactSensitiveText(event.reasoningText?.trim() ?? '');
           if (!text) {
             return;
@@ -631,6 +631,7 @@ export class CodexBridgeAgent {
             },
           );
 
+          // Events that are not persisted reach live listeners only. They are not written to the event journal.
           if (this.config.reasoningPersistSummary) {
             this.publish(envelope);
           } else {
@@ -683,6 +684,7 @@ export class CodexBridgeAgent {
             return;
           }
 
+          // Codex can resend the same request. Only the first copy creates an approval.
           const idempotencyKey = `approval-request:${event.approval.requestId}`;
           if (this.journal.idempotencySeen('app-server', idempotencyKey)) {
             this.logger.info('deduped-approval-request', {
@@ -713,6 +715,8 @@ export class CodexBridgeAgent {
             expiresAt: event.approval.expiresAt,
           });
 
+          // A newer request supersedes older pending requests in the same turn,
+          // or in the thread when the turn is unknown.
           const supersededIds = this.repository.supersedePendingApprovals(thread.id, approvalId, event.approval.turnId);
           for (const supersededApprovalId of supersededIds) {
             const supersededEvent = this.journal.createEnvelope<ApprovalSupersededPayload>(
@@ -804,13 +808,14 @@ export class CodexBridgeAgent {
       return existing;
     }
 
+    // After a failed lookup, wait 10 seconds before asking the App Server about this thread again.
     const blockedUntilMs = this.mapRetryBackoffUntilMs.get(codexThreadId) ?? 0;
     if (blockedUntilMs > Date.now()) {
       const local = this.desktopThreadCatalog?.getThread(codexThreadId);
       return local ? this.sessionRegistry.ensureThreadForCodexThread(local) : undefined;
     }
 
-    // Auto-map threads that were created or resumed directly in the Codex app.
+    // Map threads created or resumed directly in the Codex app that RCC has not seen yet.
     try {
       const threads = await this.fetchCodexThreads({ allowCachedOnError: true });
       if (this.stopped) {

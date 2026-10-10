@@ -10,8 +10,8 @@ import type { RccEventBus } from '../runtime/eventBus.js';
 import { newId } from '../utils/ids.js';
 
 export class SessionRegistryAgent {
-  // Telegram UX: only the focused thread should stream live token output into the operator chat.
-  // Approvals and lifecycle events can still arrive from any thread.
+  // Only the focused thread streams live output to the operator chat.
+  // Approvals and lifecycle events are sent for every thread.
   private operatorFocusThreadId?: string;
 
   constructor(
@@ -269,6 +269,7 @@ export class SessionRegistryAgent {
 
   private canonicalPath(rawPath: string): string {
     const resolved = path.resolve(rawPath);
+    // Resolve symbolic links, so one directory always maps to the same project.
     try {
       return fs.realpathSync.native(resolved);
     } catch {

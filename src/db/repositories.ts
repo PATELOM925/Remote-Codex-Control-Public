@@ -438,6 +438,10 @@ export class RccRepository {
     }));
   }
 
+  /**
+   * Returns the id of the approval that superseded this one. Only the 200 most recent
+   * superseded events are searched.
+   */
   findSupersedingApprovalId(approvalId: string): string | undefined {
     const rows = this.db
       .prepare(
@@ -456,12 +460,16 @@ export class RccRepository {
           return payload.supersededByApprovalId;
         }
       } catch {
-        // Ignore malformed historical rows; the event log remains append-only.
+        // Skip rows with malformed JSON. The event log is append-only, so such rows are kept.
       }
     }
     return undefined;
   }
 
+  /**
+   * Marks other pending approvals as superseded. The scope is the turn when turnId is set,
+   * otherwise the whole thread.
+   */
   supersedePendingApprovals(threadId: string, keepApprovalId: string, turnId?: string): string[] {
     const rows = (turnId
       ? this.db
@@ -503,6 +511,7 @@ export class RccRepository {
 
   listRecentTurnOutputs(threadId: string, limit = 10): TurnOutputRecord[] {
     const requestedLimit = Math.max(1, limit);
+    // Scan extra rows, because noise filtering removes many of them.
     const scanLimit = Math.min(Math.max(requestedLimit * 10, 25), 250);
     const rows = this.db
       .prepare(
@@ -538,6 +547,7 @@ export class RccRepository {
       .slice(0, requestedLimit);
   }
 
+  /** Drops protocol chatter. Tool status lines are kept only when they report a failure. */
   private isTurnOutputNoise(record: TurnOutputRecord): boolean {
     const text = record.text.trim();
     const method = record.method?.trim() ?? '';

@@ -189,6 +189,8 @@ export class TelegramBotApiClient implements TelegramClient {
       return;
     }
 
+    // Telegram returns only the newest pending update for offset -1. Using it moves
+    // the offset past everything queued while RCC was not running.
     const updates = await this.postJson<TelegramGetUpdatesResult[]>('/getUpdates', {
       timeout: 0,
       offset: -1,
@@ -202,6 +204,7 @@ export class TelegramBotApiClient implements TelegramClient {
   }
 
   private async getUpdates(): Promise<TelegramGetUpdatesResult[]> {
+    // Telegram treats offset as an acknowledgement, so updates below it are not returned again.
     const response = await this.postJson<TelegramGetUpdatesResult[]>('/getUpdates', {
       timeout: 30,
       offset: this.pollOffset + 1,
@@ -259,7 +262,7 @@ export class TelegramBotApiClient implements TelegramClient {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
-        // Explicit timeout so we fail fast and can retry/continue running.
+        // Bound each request, so a stalled call fails and the polling loop can retry.
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -278,7 +281,7 @@ export class TelegramBotApiClient implements TelegramClient {
           description = raw.trim().slice(0, 180) || undefined;
         }
       } catch {
-        // Best-effort only; keep original status.
+        // Reading the body is best-effort. The status code is reported either way.
       }
       const hint =
         response.status === 404

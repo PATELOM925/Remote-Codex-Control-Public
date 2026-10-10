@@ -17,6 +17,9 @@ interface InternalThread extends CodexThread {
   activeTurnId?: string;
 }
 
+/**
+ * In-memory App Server double. It records calls and emits events, and never starts Codex.
+ */
 export class MockAppServerClient implements AppServerClient {
   private readonly emitter = new EventEmitter();
   private readonly threads = new Map<string, InternalThread>();

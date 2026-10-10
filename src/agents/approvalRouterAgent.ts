@@ -69,8 +69,13 @@ export class ApprovalRouterAgent {
     });
   }
 
+  /**
+   * Handles one Telegram approval callback. The caller must first check that
+   * the chat is an allowed operator chat.
+   */
   async resolveFromTelegramCallback(callbackData: string): Promise<void> {
     const idempotencyKey = `callback:${callbackData}`;
+    // A second copy of a callback that is still running is refused, so a double tap cannot resolve twice.
     if (this.inFlightCallbacks.has(idempotencyKey)) {
       await this.telegramClient.sendMessage(this.config.operatorChatId, `Callback already being processed: ${callbackData}`);
       return;
@@ -106,7 +111,7 @@ export class ApprovalRouterAgent {
       if (!approval) {
         throw new Error(`Unknown approval ${approvalId}`);
       }
-      // "Dismiss" mutes repeated notifications but does not change the actual approval.
+      // Dismiss only mutes repeat notifications. The approval stays pending.
       this.journal.rememberIdempotency('approval', `dismiss:${approvalId}`);
       await this.telegramClient.sendMessage(
         this.config.operatorChatId,
@@ -125,6 +130,7 @@ export class ApprovalRouterAgent {
       if (!approval) {
         throw new Error(`Unknown approval ${approvalId}`);
       }
+      // A card for a superseded request is stale. Refuse it, so the operator acts on the current request.
       if (approval.status === 'superseded') {
         this.journal.rememberIdempotency('telegram', idempotencyKey);
         const newer = this.repository.findSupersedingApprovalId(approvalId);
@@ -144,6 +150,7 @@ export class ApprovalRouterAgent {
         await this.telegramClient.sendMessage(this.config.operatorChatId, `Request ${approvalId} expired. Use /approvals for current requests.`);
         return;
       }
+      // Desktop-recovered approvals cannot be answered through the App Server, so they use the desktop fallback.
       if (approval.codexRequestId.startsWith('desktop:')) {
         await this.resolveDesktopRecoveredApproval(approvalId, 'approved');
         this.journal.rememberIdempotency('telegram', idempotencyKey);
@@ -249,6 +256,9 @@ export class ApprovalRouterAgent {
     }
   }
 
+  /**
+   * Creates a demo approval that is resolved locally. It does not contact Codex.
+   */
   triggerDemoApproval(input: { threadId: string; summary?: string; actionType?: string }): string {
     const thread = this.sessionRegistry.findThreadById(input.threadId);
     if (!thread) {
@@ -323,7 +333,7 @@ export class ApprovalRouterAgent {
     }
 
     if (this.journal.idempotencySeen('approval', `dismiss:${payload.approvalId}`)) {
-      // Operator explicitly muted this approval card.
+      // The operator dismissed this card, so do not notify again.
       return;
     }
     if (this.journal.idempotencySeen('approval', `notified:${payload.approvalId}`)) {
@@ -405,7 +415,7 @@ export class ApprovalRouterAgent {
     }
 
     if (approval.codexRequestId.startsWith('demo:')) {
-      // Demo approvals are intentionally best-effort and should be idempotent.
+      // Demo approvals have no Codex request. Resolve them locally and ignore repeats.
       if (approval.status !== 'pending') {
         return;
       }
@@ -462,6 +472,7 @@ export class ApprovalRouterAgent {
   }
 
   private expireApprovalIfDue(approval: ApprovalRecord): boolean {
+    // Only a pending approval with a valid expiry can expire by time.
     if (approval.status !== 'pending' || !approval.expiresAt) {
       return false;
     }
@@ -507,6 +518,7 @@ export class ApprovalRouterAgent {
       return;
     }
 
+    // Under appserver_only, desktop-recovered approvals are never answered from Telegram.
     if (this.config.approvalStrategy === 'appserver_only') {
       await this.telegramClient.sendMessage(
         this.config.operatorChatId,

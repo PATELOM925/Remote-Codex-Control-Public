@@ -106,5 +106,6 @@ export interface AppServerClient {
   interruptTurn(codexThreadId: string, turnId: string): Promise<void>;
   listThreads(): Promise<CodexThread[]>;
   resolveApproval(requestId: string, decision: 'approved' | 'denied'): Promise<{ ackId: string }>;
+  /** Optional. When it is absent, the bridge reports no skills for a thread. */
   listSkills?(cwd: string): Promise<CodexSkillRef[]>;
 }

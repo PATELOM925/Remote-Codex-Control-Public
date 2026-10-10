@@ -16,6 +16,8 @@ export class AttachmentPathPolicy implements Policy<AttachmentPathContext> {
     const resolvedThreadWorkspace = path.resolve(context.threadWorkspace);
     const resolvedProjectRoot = path.resolve(context.projectRoot);
 
+    // The trailing separator stops a sibling such as /work/app2 from matching /work/app.
+    // Symbolic links are not resolved.
     const insideThreadWorkspace = resolvedPath.startsWith(`${resolvedThreadWorkspace}${path.sep}`);
     const insideProjectRoot = resolvedPath.startsWith(`${resolvedProjectRoot}${path.sep}`);
 

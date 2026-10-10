@@ -58,6 +58,7 @@ export class GitGuardrailAgent {
     return { gitActionId: action.id };
   }
 
+  /** Stages every change in the thread working tree with git add -A, then commits with the message. */
   approveCommit(gitActionId: string, commitMessage: string): void {
     const action = this.mustFindGitAction(gitActionId);
     if (action.actionType !== 'commit') {
@@ -132,6 +133,7 @@ export class GitGuardrailAgent {
     }
 
     const thread = this.mustFindThread(action.threadId);
+    // Check the branch policy again before pushing, not only when the request was made.
     const decision = this.policyEngine.evaluateBranchPush(action.targetBranch);
     if (!decision.allowed) {
       this.repository.updateGitActionStatus(action.id, 'denied', decision.reason);
@@ -161,6 +163,7 @@ export class GitGuardrailAgent {
 
   private git(cwd: string, args: string[]): string {
     try {
+      // Arguments go to git directly, without a shell.
       return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
     } catch (error) {
       if (error instanceof Error) {

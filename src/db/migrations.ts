@@ -146,6 +146,9 @@ const MIGRATIONS = [
   `,
 ];
 
+/**
+ * Applies the schema in one transaction. Every statement uses IF NOT EXISTS, so this is safe on each start.
+ */
 export const runMigrations = (db: DatabaseSync): void => {
   db.exec('BEGIN;');
   try {

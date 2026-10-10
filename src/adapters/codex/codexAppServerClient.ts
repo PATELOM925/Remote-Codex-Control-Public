@@ -133,6 +133,8 @@ export class CodexAppServerClient implements AppServerClient {
   async startThread(input: StartThreadInput): Promise<CodexThread> {
     this.assertInitialized();
 
+    // Writes are confined to the workspace. Actions that need more access wait for
+    // an approval request, which RCC answers.
     const result = (await this.sendRequest('thread/start', {
       cwd: input.cwd,
       model: input.model ?? null,
@@ -213,6 +215,9 @@ export class CodexAppServerClient implements AppServerClient {
     return result.data.map((thread) => this.mapThread(thread));
   }
 
+  /**
+   * Answers a pending server approval request. Unknown or already answered requests throw.
+   */
   async resolveApproval(requestId: string, decision: 'approved' | 'denied'): Promise<{ ackId: string }> {
     this.assertInitialized();
     const pendingApproval = this.pendingApprovals.get(requestId);
@@ -236,7 +241,8 @@ export class CodexAppServerClient implements AppServerClient {
 
   private async connectStdio(): Promise<void> {
     let command = this.options.command ?? 'codex app-server --listen stdio://';
-    // If `codex` isn't on PATH, the Codex desktop app still bundles a binary we can call directly.
+    // Prefer the binary bundled with the Codex desktop app when it is installed.
+    // A bare `codex` command may not be on PATH.
     if (command.trim().startsWith('codex ')) {
       const appBin = '/Applications/Codex.app/Contents/Resources/codex';
       if (fs.existsSync(appBin)) {
@@ -521,6 +527,7 @@ export class CodexAppServerClient implements AppServerClient {
       return;
     }
 
+    // Reply with an error so the App Server does not wait for an answer that will never come.
     this.sendErrorResponse(request.id, -32601, `Unsupported server request method: ${request.method}`);
   }
 
@@ -610,6 +617,7 @@ export class CodexAppServerClient implements AppServerClient {
       case 'applyPatchApproval':
         return { decision: decision === 'approved' ? 'approved' : 'denied' };
       case 'item/permissions/requestApproval': {
+        // Grant only the network and file system access the server asked for, and only when approved.
         if (decision === 'approved') {
           const requestedPermissions = (params.permissions ?? {}) as Record<string, unknown>;
           return {
@@ -803,6 +811,7 @@ export class CodexAppServerClient implements AppServerClient {
   private extractTextCandidates(root: unknown): string[] {
     const out: string[] = [];
     const seen = new Set<unknown>();
+    // Only these keys are read, so unrelated payload fields are not forwarded to the operator.
     const keys = new Set([
       'text',
       'delta',

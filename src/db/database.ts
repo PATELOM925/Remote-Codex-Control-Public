@@ -21,6 +21,10 @@ export class DatabaseManager {
     this.validateStartupState();
   }
 
+  /**
+   * Recovers from I/O, lock or database open errors by backing up the database files, running an
+   * integrity check and reopening. Other errors are rethrown.
+   */
   private openWithGuardedRecovery(): DatabaseSync {
     try {
       return new DatabaseSync(this.config.dbPath);
@@ -74,10 +78,11 @@ export class DatabaseManager {
     });
   }
 
+  /**
+   * Checks that the event log can serve as a replay source and logs its latest sequence.
+   * Projections are updated directly, so this does not rebuild them.
+   */
   rebuildProjectionsFromEventLog(): void {
-    // Current projections are directly updated by agents and event-log replay is not yet
-    // destructive. This startup hook verifies replay source availability and logs the
-    // latest sequence so operators can distinguish safe verification from state deletion.
     const row = this.db.prepare('SELECT COALESCE(MAX(sequence), 0) as max_sequence FROM event_log').get() as { max_sequence: number };
     this.logger.info('projection-rebuild-source-verified', { latestSequence: row.max_sequence });
   }

@@ -47,6 +47,7 @@ export class SteeringAgent {
         return 'steer_active_turn';
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        // The App Server lost the thread. Queue the message for the next turn instead of failing.
         if (!/thread not found/i.test(errorMessage) && !/\bunknown thread\b/i.test(errorMessage)) {
           throw error;
         }
