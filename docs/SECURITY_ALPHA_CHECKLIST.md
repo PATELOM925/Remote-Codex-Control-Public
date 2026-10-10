@@ -1,11 +1,11 @@
-# Security Alpha Checklist
+# Security checklist for public changes
 
-Run before public push.
+This checklist covers what to check before you push a change that touches the public repository. It is for the maintainer and for any contributor who prepares a release.
 
-## Local Files
+## Local files
 
 - `setup.md` is ignored and not staged.
-- `.env*` with real values is not staged.
+- `.env` files with real values are not staged.
 - `.dist/` is not staged.
 - SQLite files are not staged.
 - Logs and runtime screenshots are not staged.
@@ -13,39 +13,41 @@ Run before public push.
 
 ## Secrets
 
+Run these commands:
+
 ```bash
 npm run secrets:check
 git grep -n "$HOME" -- . ':!package-lock.json' | grep -v 'git grep' || true
 ```
 
-Rotate any token that appears in public artifacts, screenshots, logs, or chat transcripts.
+If a token appears in a public file, a screenshot, a log, or a chat transcript, revoke or rotate it.
 
 ## Telegram
 
-- Bot token came from BotFather.
-- `RCC_ALLOWED_CHAT_IDS` contains only trusted chats.
-- `/status` works.
-- Unauthorized chats are rejected.
+- The bot token came from BotFather.
+- `RCC_ALLOWED_CHAT_IDS` lists only trusted chats.
+- `/status` answers.
+- Messages from unauthorized chats get a reply and no action.
 
 ## Approvals
 
-- Approval cards include project/thread/action context.
-- Stale or superseded approvals are rejected.
-- Desktop UI automation remains disabled for public alpha.
+- Approval cards show the project, thread, and action.
+- Expired and superseded approvals are rejected.
+- The desktop UI automation fallback is off.
 
-## Attachments And Artifacts
+## Uploads and artifacts
 
-- Attachments require selected/explicit thread.
-- Paths stay under thread-scoped roots.
-- Artifacts are list-first and explicit-send.
-- Large artifacts use fallback behavior.
+- Uploads need a selected or named thread.
+- Paths stay inside the thread's upload and artifact folders.
+- Artifacts are listed first and sent only when selected.
+- Large artifacts use the fallback.
 
-## Public Claims
+## Public claims
 
 Do not claim:
 
 - cloud Codex execution;
-- production hosted relay;
-- raw hidden reasoning access;
-- multi-user/RBAC;
+- a production hosted relay;
+- access to hidden reasoning;
+- multi-user access or role-based permissions;
 - unlimited artifact delivery.
