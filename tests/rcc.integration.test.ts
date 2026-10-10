@@ -183,7 +183,7 @@ const createDesktopMirror = (baseDir: string) => {
   return { codexHome, insertThread, insertLog, close };
 };
 
-test('relay defaults are conservative enough for free-plan hosting', () => {
+test('relay defaults match the run.sh values', () => {
   const keys = ['RCC_RELAY_POLL_INTERVAL_MS', 'RCC_RELAY_SNAPSHOT_INTERVAL_MS'] as const;
   const previous = new Map<string, string | undefined>();
   for (const key of keys) {
@@ -192,8 +192,8 @@ test('relay defaults are conservative enough for free-plan hosting', () => {
   }
   try {
     const config = loadConfig();
-    assert.equal(config.relayPollIntervalMs, 15_000);
-    assert.equal(config.relaySnapshotIntervalMs, 60_000);
+    assert.equal(config.relayPollIntervalMs, 2500);
+    assert.equal(config.relaySnapshotIntervalMs, 10_000);
   } finally {
     for (const key of keys) {
       const value = previous.get(key);
