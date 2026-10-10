@@ -243,3 +243,5 @@ RCC_RELAY_ENABLED=false
 ```
 
 The repository includes web/relay code for future work, but the public setup path is Telegram-only.
+
+If you enable the relay, set `RCC_RELAY_BASE_URL` to your own relay URL. It has no default. It must start with `https://`; `http://127.0.0.1` and `http://localhost` are allowed for local tests. If it is missing or not https, the relay stays off, RCC logs `relay-disabled`, and Telegram keeps working.

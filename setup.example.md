@@ -34,6 +34,8 @@ RCC_LOCAL_STATUS_PORT=4765
 # Web and hosted relay are experimental in this public branch.
 RCC_WEB_CONTROL_ENABLED=false
 RCC_RELAY_ENABLED=false
+# Required when RCC_RELAY_ENABLED=true. Must start with https://. No default.
+# RCC_RELAY_BASE_URL=
 
 # Optional limits
 RCC_TELEGRAM_SEND_LIMIT=52428800
