@@ -37,7 +37,9 @@ export class GitGuardrailAgent {
 
   requestCommitApproval(threadId: string, summary?: string): { gitActionId: string } {
     this.mustFindThread(threadId);
-    const action = this.repository.createGitAction(threadId, 'commit', undefined, summary);
+    // The commit request names no paths, so the approval text must say that every change is included.
+    const approvalText = [summary ?? 'Commit changes', 'All changes in the working tree will be committed.'].join('\n');
+    const action = this.repository.createGitAction(threadId, 'commit', undefined, approvalText);
 
     this.publish(
       this.journal.createEnvelope(

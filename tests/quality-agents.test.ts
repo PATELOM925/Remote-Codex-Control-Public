@@ -141,10 +141,15 @@ const makeGitGuardrail = (options: { cwd: string; actionType: 'commit' | 'push';
     status: 'pending',
   };
   const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+  const created: Array<{ actionType: string; summary?: string }> = [];
   const sessionRegistry = {
     findThreadById: (id: string) => (id === 'thread-git' ? { id, projectId: 'project-1', cwd: options.cwd } : undefined),
   };
   const repository = {
+    createGitAction: (_threadId: string, actionType: string, _targetBranch?: string, summary?: string) => {
+      created.push({ actionType, summary });
+      return { ...action, id: `created-${created.length}`, summary, status: 'pending' };
+    },
     findGitActionById: (id: string) => (id === action.id ? action : undefined),
     updateGitActionStatus: (_id: string, status: string, summary?: string) => {
       action.status = status;
@@ -170,7 +175,7 @@ const makeGitGuardrail = (options: { cwd: string; actionType: 'commit' | 'push';
     new RccEventBus(),
     new Logger('error'),
   );
-  return { agent, action, events };
+  return { agent, action, events, created };
 };
 
 test('approveCommit ends in a failed state when git cannot commit', () => {
@@ -204,4 +209,14 @@ test('approvePush ends in a failed state when the push fails', () => {
 
   assert.equal(action.status, 'failed');
   assert.match(action.summary ?? '', /origin/);
+});
+
+test('requestCommitApproval tells the operator that every working-tree change is committed', () => {
+  const { agent, created } = makeGitGuardrail({ cwd: os.tmpdir(), actionType: 'commit' });
+
+  agent.requestCommitApproval('thread-git', 'Fix login');
+
+  assert.equal(created.length, 1);
+  assert.match(created[0]?.summary ?? '', /Fix login/);
+  assert.match(created[0]?.summary ?? '', /All changes in the working tree will be committed/);
 });
