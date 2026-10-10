@@ -190,3 +190,45 @@ test('selected-thread event stream sends standard SSE framing', async () => {
     daemon.stop();
   }
 });
+
+test('web login and bearer checks accept only the exact configured token', async () => {
+  const webToken = 'fake-web-token-0001';
+  const { daemon } = await createDaemon({
+    localStatusEnabled: true,
+    localStatusHost: '127.0.0.1',
+    localStatusPort: 0,
+    webControlEnabled: true,
+    webAuthToken: webToken,
+  });
+  try {
+    const url = daemon.localStatusServer.url();
+    assert.ok(url);
+
+    const login = (token: string) => fetch(`${url}/api/session/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal((await login(webToken)).status, 200);
+    assert.equal((await login('fake-web-token-0002')).status, 401, 'same length, wrong value');
+    assert.equal((await login('fake-web-token')).status, 401, 'shorter');
+    assert.equal((await login(`${webToken}-extra`)).status, 401, 'longer');
+
+    // Missing thread means the bearer check passed. A bad bearer returns 401 before the thread lookup.
+    const interrupt = (authorization?: string) => fetch(`${url}/api/threads/missing-thread/interrupt`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(authorization ? { authorization } : {}) },
+      body: '{}',
+    });
+    const accepted = await interrupt(`Bearer ${webToken}`);
+    assert.equal(accepted.status, 404);
+    assert.equal(((await accepted.json()) as { error?: string }).error, 'thread_not_found');
+    for (const authorization of ['Bearer fake-web-token-0002', 'Bearer fake-web-token', `Bearer ${webToken}-extra`, webToken, undefined]) {
+      const rejected = await interrupt(authorization);
+      assert.equal(rejected.status, 401, `authorization ${authorization ?? '(none)'}`);
+      assert.equal(((await rejected.json()) as { error?: string }).error, 'unauthorized_web_session');
+    }
+  } finally {
+    daemon.stop();
+  }
+});

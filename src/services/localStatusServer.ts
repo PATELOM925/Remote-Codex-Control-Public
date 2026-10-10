@@ -1,4 +1,5 @@
 import http, { type Server } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
@@ -31,6 +32,13 @@ interface DashboardEvent {
   turnId?: string;
   summary: string;
 }
+
+// timingSafeEqual throws on unequal lengths, so the length check comes first.
+const tokensMatch = (candidate: string, expected: string): boolean => {
+  const candidateBytes = Buffer.from(candidate);
+  const expectedBytes = Buffer.from(expected);
+  return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+};
 
 export class LocalStatusServer {
   private server?: Server;
@@ -261,7 +269,7 @@ export class LocalStatusServer {
     if (url.pathname === '/api/session/login') {
       const body = await this.readJsonBody(request);
       const token = typeof body.token === 'string' ? body.token : '';
-      if (this.config.webAuthToken && token === this.config.webAuthToken) {
+      if (this.config.webAuthToken && tokensMatch(token, this.config.webAuthToken)) {
         this.sendJson(response, 200, this.buildSessionPayload(request, true));
         return;
       }
@@ -1141,7 +1149,7 @@ export class LocalStatusServer {
       return false;
     }
     const authorization = request.headers.authorization ?? '';
-    return authorization === `Bearer ${this.config.webAuthToken}`;
+    return tokensMatch(authorization, `Bearer ${this.config.webAuthToken}`);
   }
 
   private async readJsonBody(request: http.IncomingMessage): Promise<Record<string, unknown>> {
