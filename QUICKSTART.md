@@ -4,6 +4,8 @@ This is the shortest successful path after installation.
 
 ## 1. Start RCC
 
+If you have not set up RCC yet, run `npm run setup` first. The setup writes `setup.md`. See [INSTALL.md](./INSTALL.md).
+
 ```bash
 cd /path/to/Remote-Codex-Control-Public
 npm run verify:quick

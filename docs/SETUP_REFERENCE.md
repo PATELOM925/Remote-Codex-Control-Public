@@ -2,7 +2,13 @@
 
 `setup.md` is a local-only environment file loaded by `./run.sh`. It contains secrets and machine-specific settings. Do not commit it.
 
-Start from:
+The easiest way to create it is the guided setup:
+
+```bash
+npm run setup
+```
+
+To write it by hand, start from the template:
 
 ```bash
 cp setup.example.md setup.md
@@ -64,6 +70,18 @@ RCC_TELEGRAM_TRANSPORT=long_polling
 ```
 
 Why RCC needs it: public alpha uses Telegram long polling, so RCC does not require a public webhook URL.
+
+## Project Folders
+
+### `RCC_PROJECT_ROOTS`
+
+Optional. Folders the agent may work in, separated by commas. RCC registers each folder as a project when it starts. A folder that is already registered is not added again. A path that is not a folder is skipped, with a warning in the terminal.
+
+```bash
+RCC_PROJECT_ROOTS=/Users/you/Work/app-one,/Users/you/Work/app-two
+```
+
+`npm run setup` writes this key. A path cannot contain a comma.
 
 ## Recommended Safety Defaults
 

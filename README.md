@@ -9,12 +9,38 @@ Coding agents stop and ask before they run commands or change files. If the pers
 ## At a glance
 
 - About 17,400 lines of TypeScript in 51 files. 13,663 lines are in `src/`. 3,548 lines are in one integration test file.
-- 81 test cases. All 81 pass on macOS with Node 22.
+- 99 test cases. All 99 pass on macOS with Node 22.
 - 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
 - 21 commands registered with the Telegram bot menu at startup.
 - 5 policy checks: project allowlist, branch push, model switch, attachment path, and artifact send.
 - 0 npm packages in a `dependencies` block. The application code imports only Node.js built-in modules. The start and test scripts use `tsx` and TypeScript, which are dev dependencies.
 - MIT license.
+
+## Quick install
+
+On a Mac with git and Node 22.5 or newer, run this in Terminal:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/PATELOM925/Remote-Codex-Control-Public/main/install.sh)"
+```
+
+The installer clones RCC into `~/Remote-Codex-Control`, installs the packages, and starts the guided setup. It is safe to run again.
+
+To do each step yourself:
+
+```bash
+git clone https://github.com/PATELOM925/Remote-Codex-Control-Public.git
+cd Remote-Codex-Control-Public
+npm ci && npm run setup
+```
+
+The setup asks for three things:
+
+1. The bot token from @BotFather.
+2. Your Telegram chat. Send your new bot a message, then confirm that the chat is yours.
+3. The project folder the agent may work in. You can add more than one.
+
+It writes `setup.md` with owner-only permissions. Then run `./run.sh`. Codex must be installed and signed in for real use. Nothing leaves the Mac except calls to Telegram.
 
 ## Demo without credentials
 
@@ -141,21 +167,22 @@ Set `HOME` to an empty folder, as shown, so the thread list does not read your r
 
 The real flow needs two more things:
 
-- The real Telegram flow needs `setup.md` with a bot token from BotFather and your numeric chat ID. Then run `./run.sh`. `run.sh` exits with an error if `setup.md` is missing.
+- The real Telegram flow needs `setup.md` with a bot token from BotFather and your numeric chat ID. Run `npm run setup` to write it, or copy `setup.example.md` by hand. Then run `./run.sh`. `run.sh` exits with an error if `setup.md` is missing.
 - A real Codex session needs the Codex app or CLI installed and signed in on the Mac.
 
 ## Tests
 
-`npm test` runs the 81 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
+`npm test` runs the 99 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
 
-- Unknown chats are rejected (line 1189).
-- A git push to `main` is blocked (line 1037).
-- Stale approvals expire, and duplicate callbacks are idempotent (lines 1610 and 2552).
-- Superseded approvals are rejected (line 3225).
-- Attachment names with path traversal stay inside the thread folder (line 296).
-- Artifact sends re-check that the file is inside the artifact root (line 2932).
-- Secret-looking text is redacted (line 3133).
-- The local status server refuses a non-local bind address (line 1015).
+- Unknown chats are rejected (line 1202).
+- A git push to `main` is blocked (line 1050).
+- Stale approvals expire, and duplicate callbacks are idempotent (lines 1623 and 2565).
+- Superseded approvals are rejected (line 3238).
+- Attachment names with path traversal stay inside the thread folder (line 309).
+- Artifact sends re-check that the file is inside the artifact root (line 2945).
+- Secret-looking text is redacted (line 3146).
+- The local status server refuses a non-local bind address (line 1028).
+- The setup wizard accepts only a confirmed private chat, keeps the old `setup.md` as a backup, and never prints the bot token.
 
 There is no CI workflow in this repo. The tests run only when you run them.
 

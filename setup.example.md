@@ -7,6 +7,9 @@ RCC_OPERATOR_CHAT_ID=replace_with_your_numeric_chat_id
 RCC_ALLOWED_CHAT_IDS=replace_with_your_numeric_chat_id
 RCC_TELEGRAM_TRANSPORT=long_polling
 
+# Optional. Folders the agent may work in, separated by commas.
+# RCC_PROJECT_ROOTS=/absolute/path/to/your/project
+
 # Recommended public-alpha safety defaults
 RCC_STRICT_SECURITY_DEFAULTS=true
 RCC_APPROVAL_STRATEGY=appserver_then_ui

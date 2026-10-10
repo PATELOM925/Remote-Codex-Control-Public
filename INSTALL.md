@@ -21,12 +21,46 @@ node -e "import('node:sqlite').then(() => console.log('node:sqlite available'))"
 
 If `node:sqlite` fails, install a newer Node.js runtime before starting RCC.
 
-## Install Dependencies
+## Guided Setup (Recommended)
+
+Run the installer in Terminal. It needs git and Node 22.5 or newer:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/PATELOM925/Remote-Codex-Control-Public/main/install.sh)"
+```
+
+The installer clones RCC into `~/Remote-Codex-Control` (set `RCC_DIR` to use another folder), runs `npm ci`, and starts the setup. It is safe to run again. If you already have a clone, run the setup from that folder:
+
+```bash
+cd Remote-Codex-Control-Public
+npm ci
+npm run setup
+```
+
+The setup asks for three things:
+
+- The bot token. It comes from @BotFather, and the setup shows the steps. The token does not show on screen as you type it.
+- Your Telegram chat. Send your new bot any message, such as `/start`. The setup shows who sent it and asks you to confirm that the chat is yours. It accepts only a private chat.
+- The project folder the agent may work in. The default is the folder you ran the setup from. You can add more than one.
+
+When it finishes, it writes `setup.md` with owner-only permissions (600). If `setup.md` already exists, the setup asks before it replaces the file. The old file is kept as `setup.md.bak-<timestamp>`.
+
+The setup also checks for the Codex CLI. If Codex is missing, it still continues, but Codex must be installed and signed in before real use.
+
+Then go to [Run RCC](#run-rcc).
+
+To check the setup without writing anything, run it with `--dry-run`. For a script, use `--yes --chat-id <id> --project <path>` and set the token in `RCC_SETUP_BOT_TOKEN`. Run `npm run setup -- --help` for all options.
+
+## Manual Setup (Alternative)
+
+Use this path if you want to fill in `setup.md` yourself.
+
+### Install Dependencies
 
 ```bash
 git clone https://github.com/PATELOM925/Remote-Codex-Control-Public.git
 cd Remote-Codex-Control-Public
-npm install
+npm ci
 npm run verify:quick
 ```
 
@@ -47,7 +81,9 @@ References:
 - [Telegram Bot Features: BotFather](https://core.telegram.org/bots/features#botfather)
 - [Telegram Bot API: getUpdates](https://core.telegram.org/bots/api#getupdates)
 
-## Create `setup.md`
+## Create `setup.md` By Hand
+
+Skip this section if `npm run setup` already wrote `setup.md`.
 
 ```bash
 cp setup.example.md setup.md
@@ -60,6 +96,7 @@ RCC_TELEGRAM_BOT_TOKEN=replace_with_botfather_token
 RCC_OPERATOR_CHAT_ID=replace_with_your_numeric_chat_id
 RCC_ALLOWED_CHAT_IDS=replace_with_your_numeric_chat_id
 RCC_TELEGRAM_TRANSPORT=long_polling
+RCC_PROJECT_ROOTS=/absolute/path/to/your/project
 ```
 
 To find your chat ID:
@@ -145,11 +182,25 @@ Read [docs/MAC_ALWAYS_ON_RUNTIME.md](./docs/MAC_ALWAYS_ON_RUNTIME.md).
 
 ### `setup.md not found`
 
-Copy the template and fill it in:
+Run the guided setup:
+
+```bash
+npm run setup
+```
+
+Or copy the template and fill it in:
 
 ```bash
 cp setup.example.md setup.md
 ```
+
+### `Telegram rejected this token`
+
+Copy the whole token from BotFather again. Run `npm run setup` to try again.
+
+### `No confirmed message arrived`
+
+The setup waits 120 seconds for a message. Send any message to your bot while it waits. Or type your numeric chat ID at the prompt.
 
 ### `placeholder RCC_TELEGRAM_BOT_TOKEN`
 
