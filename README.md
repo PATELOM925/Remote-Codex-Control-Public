@@ -217,6 +217,9 @@ Solo project: design, implementation, security model and tests.
 
 - Public alpha. One Mac, one operator, one private Telegram bot.
 - Telegram is the supported interface. The web console and the hosted relay are experimental and are not part of the setup path.
+- The web console has a public demo mode with simulated data. It does not connect to any computer. Build it with `npm run web:demo:build`; see `apps/web/README.md`.
+- The demo is a static site with no backend. Its Cloudflare config is in `deploy/web-demo`, and deploying it is a manual step.
+- The hosted relay is single-operator. Do not share its URL or operator token with other people.
 - Desktop UI approval automation is a prototype and is off by default.
 - No multi-user access, no cloud execution, and no CI workflow.
 - Node 22 prints an `ExperimentalWarning` for `node:sqlite`.

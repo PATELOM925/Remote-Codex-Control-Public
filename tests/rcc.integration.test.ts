@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
@@ -4031,4 +4031,179 @@ test('setup wizard refuses the home folder and the disk root as a project folder
   assert.equal(isTooBroad('/Users/demo', '/Users/demo'), true);
   assert.equal(isTooBroad('/Users/demo/', '/Users/demo'), true);
   assert.equal(isTooBroad('/Users/demo/code/app', '/Users/demo'), false);
+});
+
+type WebDemoRelay = {
+  respond: (url: string, options?: { method?: string; body?: string }) => Promise<Response>;
+  reset: () => void;
+  settle: () => Promise<void>;
+};
+
+const webDemoRoot = fileURLToPath(new URL('..', import.meta.url));
+const webDemoSecretPatterns = [
+  /\/Users\//,
+  /\/home\//,
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+  /vercel\.app/,
+  /sk-[A-Za-z0-9]{20,}/,
+  /gh[pousr]_[A-Za-z0-9]{20,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /xox[abprs]-/,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+];
+
+const loadWebDemoRelay = async (): Promise<{ createDemoRelay: (options?: Record<string, number>) => WebDemoRelay }> => {
+  await import(pathToFileURL(path.join(webDemoRoot, 'apps/web/demo-relay.js')).href);
+  return (globalThis as unknown as { RccDemoRelay: { createDemoRelay: (options?: Record<string, number>) => WebDemoRelay } }).RccDemoRelay;
+};
+
+const webDemoRequest = async (demo: WebDemoRelay, method: string, url: string, body?: unknown): Promise<{ status: number; body: any }> => {
+  const response = await demo.respond(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: response.status, body: await response.json() };
+};
+
+const webDemoResult = async (demo: WebDemoRelay, commandId: string): Promise<any> => {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const { status, body } = await webDemoRequest(demo, 'GET', `/api/relay/commands/${commandId}/result`);
+    if (status === 200) return body.result;
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  throw new Error(`no result for ${commandId}`);
+};
+
+const webDemoRun = async (demo: WebDemoRelay, payload: Record<string, unknown>): Promise<any> => {
+  const queued = await webDemoRequest(demo, 'POST', '/api/relay/commands', payload);
+  assert.equal(queued.status, 202);
+  return webDemoResult(demo, queued.body.command.id);
+};
+
+test('web demo snapshot has the console keys, counts and thread states', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const { status, body } = await webDemoRequest(demo, 'GET', '/api/relay/snapshot');
+  assert.equal(status, 200);
+  const snapshot = body.snapshot;
+  for (const key of ['generatedAt', 'statusText', 'health', 'counts', 'projects', 'threads', 'approvals', 'approvalHistory', 'artifacts', 'events', 'webSession']) {
+    assert.ok(key in snapshot, `missing ${key}`);
+  }
+  assert.deepEqual(snapshot.counts, { projects: 3, threads: 6, pendingApprovals: 2, artifacts: 2 });
+  assert.deepEqual(snapshot.threads.map((thread: { status: string }) => thread.status).sort(), [
+    'completed', 'failed', 'idle', 'running', 'waiting_approval', 'waiting_approval',
+  ]);
+  assert.deepEqual(snapshot.approvals.map((approval: { category: string }) => approval.category).sort(), ['file change', 'shell command']);
+  assert.ok(Date.parse(snapshot.generatedAt) > 0);
+});
+
+test('web demo run command returns a command id and its reply reaches the thread', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const queued = await webDemoRequest(demo, 'POST', '/api/relay/commands', {
+    action: 'run',
+    targetKind: 'thread',
+    targetId: 'thread-dark-mode',
+    message: JSON.stringify({ message: 'Add a dark mode toggle', mode: 'plan' }),
+  });
+  assert.equal(queued.status, 202);
+  assert.match(queued.body.command.id, /^demo-command-\d+$/);
+  const result = await webDemoResult(demo, queued.body.command.id);
+  assert.equal(result.ok, true);
+  await demo.settle();
+  const detail = await webDemoRun(demo, { action: 'watch_thread', targetKind: 'thread', targetId: 'thread-dark-mode' });
+  const texts = detail.data.detail.outputs.map((output: { text: string }) => output.text);
+  assert.ok(texts.some((text: string) => text.startsWith('Operator message: Add a dark mode toggle')));
+  assert.ok(texts.some((text: string) => text.startsWith('Plan:')));
+  assert.equal(detail.data.detail.thread.status, 'idle');
+});
+
+test('web demo approve resolves a pending approval and a second approve reports it as resolved', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const payload = {
+    action: 'approval_response',
+    targetKind: 'approval',
+    targetId: 'demo-approval-login',
+    message: JSON.stringify({ decision: 'approve', guidance: '' }),
+  };
+  const first = await webDemoRun(demo, payload);
+  assert.equal(first.ok, true);
+  assert.equal(first.data.status, 'approved');
+  const second = await webDemoRun(demo, payload);
+  assert.equal(second.ok, false);
+  assert.match(second.message, /already resolved \(approved\)/);
+  await demo.settle();
+  const snapshot = (await webDemoRequest(demo, 'GET', '/api/relay/snapshot')).body.snapshot;
+  assert.equal(snapshot.counts.pendingApprovals, 1);
+  assert.equal(snapshot.approvalHistory[0].id, 'demo-approval-login');
+});
+
+test('web demo deny resolves a pending approval and the thread continues without the action', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const denied = await webDemoRun(demo, { action: 'deny', targetKind: 'approval', targetId: 'demo-approval-invoice' });
+  assert.equal(denied.ok, true);
+  assert.equal(denied.data.decision, 'denied');
+  await demo.settle();
+  const detail = await webDemoRun(demo, { action: 'thread_detail', targetKind: 'thread', targetId: 'thread-invoice-summary' });
+  assert.equal(detail.data.detail.thread.status, 'idle');
+  const lastReply = detail.data.detail.outputs.filter((output: { kind: string }) => output.kind === 'assistant_text').at(-1);
+  assert.match(lastReply.text, /I did not run that command/);
+});
+
+test('web demo returns a not available result for unsupported and unknown actions', async () => {
+  const demo = (await loadWebDemoRelay()).createDemoRelay({ commandDelayMs: 0, turnDelayMs: 0 });
+  const upload = await webDemoRun(demo, { action: 'attach_file', targetKind: 'thread', targetId: 'thread-dark-mode', message: '{"files":[]}' });
+  assert.equal(upload.ok, false);
+  assert.match(upload.message, /not available in the demo/i);
+  const unknown = await webDemoRun(demo, { action: 'set_relay_secret', targetKind: 'daemon' });
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.message, /not available in the demo/i);
+});
+
+test('web demo fixtures and built files contain no real paths, emails, hostnames or secret-looking strings', async () => {
+  const simulator = fs.readFileSync(path.join(webDemoRoot, 'apps/web/demo-relay.js'), 'utf8');
+  assert.doesNotMatch(simulator, /\bfetch\(|XMLHttpRequest|EventSource|WebSocket|sendBeacon/);
+  for (const pattern of webDemoSecretPatterns) {
+    assert.doesNotMatch(simulator, pattern);
+  }
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-web-demo-scan-'));
+  try {
+    const built = spawnSync(process.execPath, ['scripts/build-web-demo.mjs', outDir], { cwd: webDemoRoot, encoding: 'utf8', timeout: 60_000 });
+    assert.equal(built.status, 0, built.stderr);
+    for (const file of fs.readdirSync(outDir)) {
+      const text = fs.readFileSync(path.join(outDir, file), 'utf8');
+      for (const pattern of webDemoSecretPatterns) {
+        assert.doesNotMatch(text, pattern, `${file} matches ${pattern}`);
+      }
+    }
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test('web demo build writes every expected file with a strict header file and no token inputs', () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-web-demo-build-'));
+  try {
+    const result = spawnSync(process.execPath, ['scripts/build-web-demo.mjs', outDir], { cwd: webDemoRoot, encoding: 'utf8', timeout: 60_000 });
+    assert.equal(result.status, 0, result.stderr);
+    for (const file of ['index.html', 'app.js', 'demo-relay.js', 'demo-config.js', 'styles.css', 'manifest.webmanifest', '_headers']) {
+      assert.ok(fs.existsSync(path.join(outDir, file)), `missing ${file}`);
+    }
+    const headers = fs.readFileSync(path.join(outDir, '_headers'), 'utf8');
+    assert.match(headers, /connect-src 'none'/);
+    assert.match(headers, /script-src 'self'/);
+    assert.match(headers, /X-Content-Type-Options: nosniff/);
+    assert.match(headers, /Referrer-Policy: no-referrer/);
+    assert.match(headers, /X-Frame-Options: DENY/);
+    const html = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
+    assert.doesNotMatch(html, /id="(localToken|relayToken|localBaseUrl|relayBaseUrl)"/);
+    assert.doesNotMatch(html, /<input[^>]*(token|password)/i);
+    assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)/);
+    const visibleText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    assert.match(visibleText, /Demo mode\. This page uses made-up data and does not connect to any computer\./);
+    assert.match(html, /<script src="\.\/demo-config\.js"><\/script>/);
+    assert.match(html, /<script src="\.\/demo-relay\.js"><\/script>/);
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test('the hosted console index does not load the web demo files', () => {
+  const html = fs.readFileSync(path.join(webDemoRoot, 'apps/web/index.html'), 'utf8');
+  assert.doesNotMatch(html, /demo-config|demo-relay/);
 });
