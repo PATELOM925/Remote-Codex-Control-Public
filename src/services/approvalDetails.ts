@@ -29,7 +29,6 @@ export interface ApprovalDetails {
   actionSummary: string;
   commandPreview?: string;
   fileSummary?: string;
-  diffSummary?: string;
   networkAccess: boolean | 'unknown';
   gitAccess: boolean | 'unknown';
   destructive: boolean | 'unknown';
@@ -45,7 +44,6 @@ type ApprovalClassification = {
   impact: string;
   commandPreview?: string;
   fileSummary?: string;
-  diffSummary?: string;
   networkAccess: boolean | 'unknown';
   gitAccess: boolean | 'unknown';
   destructive: boolean | 'unknown';
@@ -113,7 +111,6 @@ export const buildApprovalDetails = (
     actionSummary: safeSummary,
     commandPreview: safeCommand,
     fileSummary: classification.fileSummary,
-    diffSummary: classification.diffSummary,
     networkAccess: classification.networkAccess,
     gitAccess: classification.gitAccess,
     destructive: classification.destructive,
@@ -145,9 +142,6 @@ export const formatApprovalDetailsForTelegram = (details: ApprovalDetails): stri
   }
   if (details.fileSummary) {
     lines.push(`Files: ${details.fileSummary}`);
-  }
-  if (details.diffSummary) {
-    lines.push(`Diff: ${details.diffSummary}`);
   }
   lines.push('', `Actions: /approve ${details.id} | /deny ${details.id} | /approval ${details.id}`);
   return lines.join('\n');

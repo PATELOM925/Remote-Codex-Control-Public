@@ -9,6 +9,8 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { AppServerEvent } from '../src/contracts/codex.js';
+import type { ApprovalRecord } from '../src/db/repositories.js';
+import { buildApprovalDetails, formatApprovalDetailsForTelegram } from '../src/services/approvalDetails.js';
 import { Logger } from '../src/logger.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 import type { UiApprovalAutomationService } from '../src/services/uiApprovalAutomationService.js';
@@ -238,4 +240,22 @@ test('a status change updates the thread status the same way a thread start does
   } finally {
     daemon.stop();
   }
+});
+
+test('approval details for a file change list the files and no diff line', () => {
+  const approval: ApprovalRecord = {
+    id: 'approval-file-change',
+    threadId: 'thread-file-change',
+    codexRequestId: 'codex-request-file-change',
+    turnId: undefined,
+    actionType: 'filesystem',
+    summary: 'Apply patch requiring approval',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    resolvedAt: undefined,
+  };
+
+  const text = formatApprovalDetailsForTelegram(buildApprovalDetails(approval));
+
+  assert.doesNotMatch(text, /^Diff:/m);
 });

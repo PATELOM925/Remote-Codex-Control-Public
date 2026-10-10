@@ -89,7 +89,7 @@
       });
       s.events = s.events.slice(-200);
     };
-    const approvalView = ({ id, thread, turnId, summary, category, risk, why, impact, commandPreview = '', fileSummary = '', diffSummary = '', decisionHint, createdAt, status = 'pending' }) => ({
+    const approvalView = ({ id, thread, turnId, summary, category, risk, why, impact, commandPreview = '', fileSummary = '', decisionHint, createdAt, status = 'pending' }) => ({
       id,
       threadId: thread.id,
       projectName: thread.projectName,
@@ -105,7 +105,6 @@
       cwd: thread.cwd,
       commandPreview,
       fileSummary,
-      diffSummary,
       networkAccess: false,
       gitAccess: false,
       destructive: false,
@@ -185,7 +184,7 @@
         summary: 'Create exports/invoice-summary.md', category: 'file change', risk: 'low',
         why: 'The agent wants to create one summary file in the exports folder.',
         impact: 'Creates one new file. Existing files are not changed.',
-        fileSummary: 'exports/invoice-summary.md (new file, about 40 lines)', diffSummary: '+40 -0',
+        fileSummary: 'exports/invoice-summary.md (new file, about 40 lines)',
         decisionHint: 'Approve if you want the summary file in this folder.', createdAt: at(6),
       }));
       s.outcomes.set('demo-approval-invoice', {
@@ -196,7 +195,7 @@
         id: 'demo-approval-docs', thread: findSeed('thread-install-guide'), turnId: 'demo-turn-docs',
         summary: 'Update install guide link', category: 'file change', risk: 'low',
         why: 'The agent wants to fix one broken link.', impact: 'Changes one line in the install guide.',
-        fileSummary: 'install-guide.md (1 line)', diffSummary: '+1 -1',
+        fileSummary: 'install-guide.md (1 line)',
         decisionHint: 'Approve if the link target is correct.', createdAt: at(100),
       }));
       s.approvals[s.approvals.length - 1].status = 'approved';

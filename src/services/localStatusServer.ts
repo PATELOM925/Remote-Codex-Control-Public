@@ -770,7 +770,6 @@ export class LocalStatusServer {
         cwd: details.cwd,
         commandPreview: details.commandPreview,
         fileSummary: details.fileSummary,
-        diffSummary: details.diffSummary,
         networkAccess: details.networkAccess,
         gitAccess: details.gitAccess,
         destructive: details.destructive,
