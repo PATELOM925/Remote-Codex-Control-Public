@@ -320,3 +320,33 @@ test('telegram and daemon send paths split the same text the same way', async ()
   assert.equal(commandPath[0]?.split('\n')[0], 'header line');
   assert.ok(commandPath[commandPath.length - 1]?.endsWith('\nfooter line'));
 });
+
+test('configured project folders with the same basename get distinct names', async () => {
+  const { registerConfiguredProjects } = await import('../src/services/configuredProjects.js');
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-cfg-names-'));
+  const first = path.join(baseDir, 'a', 'app');
+  const second = path.join(baseDir, 'b', 'app');
+  fs.mkdirSync(first, { recursive: true });
+  fs.mkdirSync(second, { recursive: true });
+
+  const projects: Array<{ id: string; name: string; rootPath: string }> = [
+    { id: 'old', name: 'APP', rootPath: path.join(baseDir, 'gone') },
+  ];
+  const store = {
+    listProjects: () => [],
+    listAllProjects: () => projects,
+    registerProject: (input: { id: string; name: string; rootPath: string }) => {
+      if (projects.some((project) => project.name.toLowerCase() === input.name.toLowerCase())) {
+        throw new Error('UNIQUE constraint failed: projects.name');
+      }
+      projects.push(input);
+    },
+  };
+
+  const result = registerConfiguredProjects(store, `${first},${second}`);
+  assert.equal(result.registered.length, 2);
+  assert.deepEqual(projects.slice(1).map((project) => project.name), ['app-2', 'app-3']);
+  assert.equal(new Set(projects.map((project) => project.id)).size, 3);
+  fs.rmSync(baseDir, { recursive: true, force: true });
+});
+

@@ -5,7 +5,9 @@ import { canonicalPath } from '../utils/paths.js';
 import { slugify } from '../utils/slug.js';
 
 interface ProjectStore {
-  listProjects(): Array<{ id: string; rootPath: string }>;
+  listProjects(): Array<{ id: string; name: string; rootPath: string }>;
+  /** Includes disabled projects. Their ids and names are still taken. */
+  listAllProjects?(): Array<{ id: string; name: string; rootPath: string }>;
   registerProject(input: { id: string; name: string; rootPath: string }): unknown;
 }
 
@@ -47,9 +49,10 @@ export const registerConfiguredProjects = (store: ProjectStore, raw: string | un
     return result;
   }
 
-  const existing = store.listProjects();
+  const existing = store.listAllProjects?.() ?? store.listProjects();
   const knownRoots = new Set(existing.map((project) => canonicalPath(project.rootPath)));
   const knownIds = new Set(existing.map((project) => project.id));
+  const knownNames = new Set(existing.map((project) => project.name.toLowerCase()));
 
   for (const entry of entries) {
     if (!isDirectory(entry)) {
@@ -62,8 +65,13 @@ export const registerConfiguredProjects = (store: ProjectStore, raw: string | un
       continue;
     }
 
-    const name = path.basename(rootPath) || 'project';
-    const baseId = `cfg_${slugify(name)}`;
+    // Project names are unique in the database, so two folders with the same basename get a suffix.
+    const baseName = path.basename(rootPath) || 'project';
+    let name = baseName;
+    for (let suffix = 2; knownNames.has(name.toLowerCase()); suffix += 1) {
+      name = `${baseName}-${suffix}`;
+    }
+    const baseId = `cfg_${slugify(baseName)}`;
     let id = baseId;
     for (let suffix = 2; knownIds.has(id); suffix += 1) {
       id = `${baseId}_${suffix}`;
@@ -72,6 +80,7 @@ export const registerConfiguredProjects = (store: ProjectStore, raw: string | un
     store.registerProject({ id, name, rootPath });
     knownRoots.add(rootPath);
     knownIds.add(id);
+    knownNames.add(name.toLowerCase());
     result.registered.push(rootPath);
   }
 

@@ -57,6 +57,11 @@ export class SessionRegistryAgent {
     return this.repository.listProjects();
   }
 
+  /** Includes disabled projects, whose ids and names stay reserved. */
+  listAllProjects(): ProjectRecord[] {
+    return this.repository.listProjects(true);
+  }
+
   getProjectById(projectId: string): ProjectRecord | undefined {
     return this.repository.getProjectById(projectId);
   }
