@@ -1,34 +1,38 @@
-# Maintainer Notes
+# Maintainer notes
 
-The public docs route new users through Telegram only. Keep web/relay docs out of the public onboarding path until they pass fresh end-to-end verification.
+This page says which parts of the repository are experimental, and what must be true before the docs can describe them as supported. It is for maintainers who decide what the public docs may claim.
 
-## Experimental Code Present
+## Public onboarding
 
-The repository currently includes:
+The public docs send new users through Telegram only. Keep the web console and the relay out of the onboarding path, and out of claims about the product, until they pass the checks below.
 
-- `apps/web/` - browser control prototype.
-- `api/relay.js` - hosted relay function prototype.
-- `supabase/rcc_relay_schema.sql` - durable relay schema prototype.
-- `scripts/setup_relay_quickstart.sh` - relay setup helper.
+## Experimental code
 
-These files are kept so development can continue, but the public branch should not claim production hosted relay, public web control, or bus-use reliability.
+The repository includes these experimental parts:
 
-## Promotion Criteria For Web/Relay
+- `apps/web/`: the browser control console. It has a public demo mode that uses simulated data.
+- `api/relay.js`: the hosted relay function.
+- `supabase/rcc_relay_schema.sql`: the durable storage schema for the relay.
+- `scripts/setup_relay_quickstart.sh`: a helper for relay setup.
 
-Before documenting web/relay as public alpha:
+The code stays so that development can continue. The public docs must not describe the hosted relay or public web control as production features.
 
-- hosted deployment is live and tied to the current commit;
-- unauthenticated relay requests fail closed;
-- operator and Mac bearer tokens are rotated and verified;
-- durable storage mode is verified;
-- Mac snapshot freshness and command lifecycle are verified;
-- selected-thread run/steer/output/approval flows pass browser E2E;
-- public docs explain token handling without exposing private values;
-- security review covers CORS, CSRF/origin policy, storage, logs, and screenshots.
+## Promotion criteria for the web console and the relay
 
-## Current Public Promise
+Before the docs call either one a public alpha feature:
 
-Telegram-first only:
+- The hosted deployment runs the current commit.
+- Requests without a valid token fail closed.
+- The operator and Mac tokens are rotated, and the rotation is tested.
+- Durable storage mode is tested.
+- Mac snapshot freshness and the command lifecycle are tested.
+- Run, steer, output, and approval flows pass a browser end-to-end test on a selected thread.
+- The docs explain token handling without showing real values.
+- A security review covers CORS, CSRF and origin policy, storage, logs, and screenshots.
+
+## Current public message
+
+Use this sentence in launch text:
 
 ```text
 RCC supervises local Codex from Telegram while execution, credentials, files, approvals, and state stay on the Mac.

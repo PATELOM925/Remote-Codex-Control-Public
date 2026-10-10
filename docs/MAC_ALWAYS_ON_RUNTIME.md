@@ -1,62 +1,52 @@
-# RCC Always-On Mac Runtime
+# Always-on Mac runtime
 
-Status: LaunchAgent/caffeinate implementation is present. Installing it on a Mac is an operator action because it changes local startup behavior.
+This page explains how to keep RCC running on your Mac with a LaunchAgent, and what sleep and lid-close limits still apply. It is for operators who want RCC to be reachable from Telegram while they are away.
 
-## Short Answer
+## Short answer
 
-RCC can keep `./run.sh` alive across normal idle sleep by using a `launchd` user agent plus macOS sleep assertions through `caffeinate`.
+RCC can keep `./run.sh` running across idle sleep. It does this with a per-user `launchd` LaunchAgent and macOS sleep assertions from `caffeinate`.
 
-RCC cannot safely promise that a MacBook keeps running after the lid is closed in every setup. Apple-supported closed-lid operation requires closed-display/clamshell conditions: power, an external display, and external keyboard/mouse or trackpad. Without that, lid close is a system sleep path that user-space apps should not claim to override reliably.
+RCC cannot make a MacBook keep running after you close the lid in every setup. Apple supports closed-display use only when the Mac has power, an external display, and an external keyboard or mouse. Without those, closing the lid is a system sleep. RCC cannot override it.
 
-## What Apple/macOS Allows
+If the Mac is asleep, RCC cannot receive Telegram updates, stream Codex output, or run commands.
 
-### Supported and Safe
+## What macOS allows
 
-1. Keep RCC running while the Mac is awake, unlocked/logged in, and the lid is open.
-2. Prevent idle system sleep while RCC is running.
-3. Let the display sleep while RCC continues in the background.
-4. Auto-restart RCC after crashes or login using a per-user `launchd` LaunchAgent.
-5. Keep RCC running with the lid closed only when the Mac is in Apple-supported closed-display mode.
+Supported:
 
-### Not Safe to Claim
+1. Keep RCC running while the Mac is awake, logged in, and the lid is open.
+2. Prevent idle system sleep while RCC runs.
+3. Let the display sleep while RCC keeps running.
+4. Restart RCC after a crash or at login, with a per-user LaunchAgent.
+5. Keep RCC running with the lid closed only in Apple-supported closed-display mode.
 
-1. “RCC works after closing any MacBook lid.”
-2. “RCC bypasses macOS lid sleep.”
-3. “RCC keeps Codex running while the Mac is asleep.”
-4. “Remote access works while the Mac is sleeping.”
+Do not claim these:
 
-If the Mac is asleep, RCC cannot receive Telegram updates, stream Codex output, or act on remote commands.
+- RCC works after you close any MacBook lid.
+- RCC bypasses macOS lid sleep.
+- RCC keeps Codex running while the Mac is asleep.
+- Remote access works while the Mac is asleep.
 
-## Evidence
+## Sources
 
-- `man caffeinate` says `caffeinate` creates power-management assertions. `-i` prevents idle system sleep, and `-s` prevents system sleep only while on AC power.
-- Apple Developer documentation for `kIOPMAssertionTypePreventUserIdleSystemSleep` says the system may still sleep for lid close, Apple menu sleep, low battery, or other sleep reasons.
-- Apple Support says that when an external display is connected to a Mac laptop with a closed lid, the Mac must be connected to power and use an external keyboard and mouse.
-- Apple Support for Apple silicon accessories says closed-lid use requires allowing the external display, keyboard, and mouse first.
-- Apple Terminal documentation says `launchd` manages daemons/agents and can run shell scripts.
-- Apple Developer launchd documentation describes `RunAtLoad` and `KeepAlive` as the supported way to launch and relaunch background jobs.
+- `man caffeinate`: `-i` prevents idle system sleep. `-s` prevents system sleep only on AC power.
+- Apple Developer, `kIOPMAssertionTypePreventUserIdleSystemSleep`: the system can still sleep for a lid close, an Apple menu sleep, a low battery, or another sleep reason.
+- Apple Support, [external display with the lid closed](https://support.apple.com/en-us/HT201177): the Mac must have power, an external keyboard, and an external mouse.
+- Apple Support, [closed-lid accessories on Apple silicon](https://support.apple.com/en-us/102282): the external display, keyboard, and mouse must be allowed first.
+- Apple Support, [sleep and wake settings](https://support.apple.com/en-gb/guide/mac-help/set-sleep-and-wake-settings-mchle41a6ccd/mac).
+- Apple Support, [launchd and shell scripts](https://support.apple.com/en-ca/guide/terminal/apdc6c1077b-5d5d-4d35-9c19-60f2397b2369/mac): `launchd` runs daemons and agents, including shell scripts.
+- Apple Developer, [creating launchd jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html): `RunAtLoad` and `KeepAlive` start and restart a job.
 
-Sources:
+## The LaunchAgent
 
-- Apple Developer, power assertion caveat: https://developer.apple.com/documentation/iokit/kiopmassertiontypepreventuseridlesystemsleep
-- Apple Support, external display with closed lid: https://support.apple.com/en-us/HT201177
-- Apple Support, closed-lid accessories on Apple silicon: https://support.apple.com/en-us/102282
-- Apple Support, sleep/wake setting: https://support.apple.com/en-gb/guide/mac-help/set-sleep-and-wake-settings-mchle41a6ccd/mac
-- Apple Support, launchd shell scripts: https://support.apple.com/en-ca/guide/terminal/apdc6c1077b-5d5d-4d35-9c19-60f2397b2369/mac
-- Apple Developer, creating launchd jobs: https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html
+The optional installer creates a user LaunchAgent. It does the following:
 
-## Implemented Alpha Path
-
-### Keep-Awake LaunchAgent
-
-RCC includes an optional installer that creates a user LaunchAgent:
-
-- starts RCC at user login
-- restarts RCC if it crashes
-- wraps RCC in `caffeinate -i -m -s` while on AC power
-- writes logs to `.dist/logs/launchd.out.log` and `.dist/logs/launchd.err.log`
-- never changes global `pmset` settings automatically
-- never promises lid-closed operation unless clamshell requirements are met
+- Starts RCC at user login.
+- Restarts RCC after a crash. This uses `KeepAlive`.
+- Runs RCC as `caffeinate -i -m -s ./run.sh`. The `-s` flag applies on AC power only.
+- Writes logs to `.dist/logs/launchd.out.log` and `.dist/logs/launchd.err.log`.
+- Does not change global `pmset` settings.
+- Does not promise lid-closed operation.
 
 Files:
 
@@ -73,80 +63,41 @@ Install:
 ./scripts/install-launchd.sh
 ```
 
-Dry-run:
+Generate the plist and check it, without installing it:
 
 ```bash
 ./scripts/install-launchd.sh --dry-run
 ```
 
-Remove:
+Remove it:
 
 ```bash
 ./scripts/uninstall-launchd.sh
 ```
 
-Runner shape:
+The runner skips `caffeinate` when `RCC_DISABLE_CAFFEINATE` is `true` in its environment. The generated LaunchAgent does not set this variable. Add it to the plist only if you need that behaviour.
 
-```bash
-cd /path/to/Remote-Codex-Control-Public
-/usr/bin/caffeinate -i -m -s ./run.sh
-```
+## Wording for operators
 
-Use `-s` only because it is valid on AC power. This matches the real “Mac awake at home” Telegram use case.
-
-### Operator UX Copy
-
-Use this wording:
+Use this wording when you describe the setup:
 
 ```text
 Keep RCC available from your phone by leaving your Mac awake, online, and on power. RCC can install a LaunchAgent that restarts the daemon and prevents idle sleep while on AC power. Closing a MacBook lid still requires Apple-supported closed-display mode: power, external display, and external keyboard/mouse. RCC does not bypass macOS lid sleep.
 ```
 
-### P1: Local Desktop Automation Bridge
+## Security notes
 
-A local automation bridge is separate from keep-awake. It is needed only if RCC should productize desktop UI approval fallback or desktop-derived mirroring beyond App Server events.
+- Do not ask for administrator privileges for the LaunchAgent.
+- Use a user LaunchAgent, not a system LaunchDaemon. RCC depends on your user session, your Codex sign-in, your `setup.md`, and possibly the GUI and Accessibility state.
+- Do not change `pmset` settings automatically. If you change battery settings, do it by hand.
+- Do not keep the display awake. Keep the daemon awake and let the display sleep.
+- Do not install third-party "keep awake with lid closed" tools as the default path.
+- Do not say that remote access works while the Mac sleeps.
 
-Do not depend on this Codex-session Computer Use plugin at runtime. Instead, build a local-only bridge:
+## Check it works
 
-- bound to `127.0.0.1`
-- disabled by default
-- token-protected
-- uses macOS Accessibility/AppleScript or a signed helper later
-- exposes only narrow actions like `approval.preflight`, `approval.click`, and `desktop.state`
-- logs confidence/reason when it refuses to act
-- never exposes screenshots or raw desktop content by default
-
-The bridge is useful for prototype desktop approvals, but App Server approvals remain the preferred path.
-
-## Security Notes
-
-- Do not request administrator privileges for the alpha LaunchAgent.
-- Prefer user LaunchAgent over system LaunchDaemon because RCC depends on the user session, Codex account, local setup file, and possibly GUI/Accessibility state.
-- Do not auto-edit `pmset` settings. If operators choose to change Battery settings, document it as manual.
-- Do not keep the display awake by default; keep the daemon awake and let display sleep.
-- Do not tell users to install third-party “keep awake with lid closed” tools as a default path.
-- Do not claim remote access works if the Mac is asleep.
-
-## Acceptance Criteria
-
-1. `scripts/install-launchd.sh` installs a per-user LaunchAgent.
-2. `scripts/uninstall-launchd.sh` removes it cleanly.
-3. Runner starts RCC through `caffeinate -i -m -s ./run.sh`.
-4. Logs are written under `.dist/logs/`.
-5. `README.md`, `INSTALL.md`, and `QUICKSTART.md` explain the limit honestly.
-6. `/status` documents whether sleep prevention is expected/active where detectable.
-7. Manual test passes:
-   - install LaunchAgent
-   - log out/in or bootstrap agent
-   - RCC starts
-   - Telegram `/status` works
-   - display sleeps but daemon remains alive on AC power
-8. Docs explicitly say lid-close requires Apple-supported closed-display mode.
-
-## Remaining Product Decision
-
-The local desktop automation bridge is still a separate decision. Approve one of these later:
-
-1. Keep desktop UI fallback as the current AppleScript/accessibility prototype.
-2. Add a local-only desktop automation bridge scaffold for approval preflight/clicking and desktop-state diagnostics.
-3. Disable desktop UI fallback and require App Server approvals only.
+1. Install the LaunchAgent.
+2. Log out and back in, or start the agent with `launchctl bootstrap`.
+3. Check that RCC started, using the logs in `.dist/logs/`.
+4. Send `/status` from Telegram. It should answer, and it shows whether sleep prevention is expected and active.
+5. With the Mac on power, let the display sleep. The daemon should stay alive.

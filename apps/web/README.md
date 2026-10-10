@@ -1,31 +1,31 @@
-# RCC Web Console (Experimental)
+# RCC web console (experimental)
 
-The public alpha setup path is Telegram-first. This web console code remains in the repository for ongoing development, but it is not documented as the public onboarding path.
+This folder holds the browser console for RCC and its public demo build. It is for contributors who work on the console and for readers who want to try the demo.
 
-Do not use the web console in public docs or launch claims until it passes fresh security review and end-to-end browser testing for the current branch.
+Status: experimental. Telegram is the supported interface. The console is not part of the setup in [INSTALL.md](../../INSTALL.md).
 
-Current boundary:
+## Boundaries
 
-- Telegram is the supported public operator surface.
-- Web control requires explicit local configuration and a private token.
-- Hosted relay requires separate deployment, bearer tokens, durable storage verification, and security review.
-- Web/relay must not receive Codex/OpenAI credentials.
+- Telegram is the only supported operator interface.
+- Web control needs explicit local configuration (`RCC_WEB_CONTROL_ENABLED`) and a private token (`RCC_WEB_AUTH_TOKEN`). It is off by default.
+- The hosted relay needs its own deployment, bearer tokens, durable storage, and a security review.
+- The web console and the relay must never get Codex or OpenAI credentials.
 
 ## Public demo
 
-The demo build shows the real console with made-up data. It runs in the browser only.
+The demo build shows the console with simulated data. It runs in the browser only.
 
-- There is no token field, base URL field or relay setup. The connection area shows "Demo Mac (simulated)".
-- `demo-relay.js` answers the requests the console makes (snapshot, commands and command results) with fixture projects, threads, approvals and replies. It makes no network calls.
-- Approving, denying, steering and interrupting work on the fixtures. File upload and artifact download are disabled.
-- State resets when the page reloads, or when you press Reset demo.
+- There is no token field, base URL field, or relay setup. The connection area shows "Demo Mac (simulated)".
+- `demo-relay.js` answers the requests that the console makes: the snapshot, commands, and command results. It returns fixture projects, threads, approvals, and replies. It makes no network calls.
+- Approve, deny, steer, and interrupt work on the fixtures. File upload and artifact download are not available.
+- Demo state resets when the page reloads, or when you press Reset demo.
 - The build adds `demo-config.js`, which sets `window.RCC_DEMO = true`. The normal console does not load that file, and its behaviour does not change.
 
-Build and serve it locally:
+Build and serve the demo locally:
 
 ```bash
 npm run web:demo:build
 npm run web:demo:serve   # http://127.0.0.1:4790/
 ```
 
-The build writes `dist-demo/`, which is git-ignored. Its `_headers` file sets `connect-src none`. The local server sends the same headers, so the browser enforces the same policy. The Cloudflare deploy notes are in `deploy/web-demo/README.md`.
+The build writes `dist-demo/`, which git ignores. Its `_headers` file sets `connect-src 'none'`. The local server sends the same headers, so the browser enforces the same policy. The Cloudflare deploy steps are in [deploy/web-demo/README.md](../../deploy/web-demo/README.md).

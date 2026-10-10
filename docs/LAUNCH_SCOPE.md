@@ -1,53 +1,39 @@
-# Public Alpha Scope
+# Public alpha scope
 
-## Public Promise
+This page lists what the public alpha does, what is prototype only, and what is planned. It is for maintainers and reviewers who decide what public text may claim.
 
-RCC lets one trusted operator supervise local Codex from Telegram while execution, credentials, files, approvals, and state stay on the Mac.
+## Public promise
 
-## Working Alpha
+RCC lets one trusted operator supervise local Codex from Telegram. Execution, credentials, files, approvals, and state stay on the Mac.
+
+## Working in the public alpha
 
 - Telegram long polling.
-- Strict chat allowlist.
-- Local Codex App Server bridge.
+- A strict chat allowlist.
+- A local Codex App Server bridge.
 - Local SQLite state.
 - Thread discovery and selection.
-- Run, steer, interrupt.
-- Approval list/approve/deny.
-- Thread-scoped Telegram attachments.
+- Run, steer, and interrupt.
+- List, approve, and deny approvals.
+- Thread-scoped uploads from Telegram.
 - Explicit artifact listing and sending.
-- Reasoning Summary only when App Server exposes it.
+- Reasoning Summary, only when the App Server exposes it.
 
-## Prototype Only
+## Prototype only
 
-- Web console.
-- Hosted relay.
+- The web console.
+- The hosted relay.
 - Desktop UI approval automation.
-- Telegram Git commit/push workflows.
+- Git commit and push from Telegram. The commands reply with a message and do not run.
 
-## Roadmap Only
+## Planned, not built
 
-- Multi-user/RBAC.
+- Multi-user access and role-based permissions.
 - Cloud execution.
 - Native mobile apps.
-- Non-Codex backends.
-- Full transcript mirroring for all threads.
+- Backends other than Codex.
+- Full transcript mirroring for every thread.
 
-## Release Gate
+## Release checks
 
-```bash
-npm run verify:quick
-npm run secrets:check
-git status --short
-```
-
-Manual Telegram smoke:
-
-```text
-/status
-/projects
-/threads 10
-/pick 1
-/where
-/last
-/approvals
-```
+Run the checks in [SECURITY_ALPHA_CHECKLIST.md](./SECURITY_ALPHA_CHECKLIST.md) before a release. The Telegram smoke test is in [CONTRIBUTING.md](../CONTRIBUTING.md#verification).

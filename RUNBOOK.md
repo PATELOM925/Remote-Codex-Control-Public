@@ -1,179 +1,188 @@
-# RUNBOOK
+# Runbook
+
+This runbook covers starting RCC, checking its health, and recovering from common faults. It is for the operator who runs RCC on the Mac.
 
 ## Local startup
 
-1. Start the Codex app on the Mac.
-2. Start the bridge daemon.
-3. Start the Telegram bot service.
-4. Confirm SQLite is accessible.
-5. Run health check to confirm App Server connectivity.
-6. Run Telegram webhook or polling connectivity check.
+1. Start the Codex app on the Mac, and make sure you are signed in.
+2. Start RCC with `./run.sh`.
+3. Check the daemon from Telegram with `/status`.
+4. Confirm that `Codex Transport: connected` and `Telegram Commands: installed` appear.
+
+RCC skips Telegram messages that arrived while it was stopped. This is the default, set by `RCC_TELEGRAM_DROP_PENDING_UPDATES_ON_START`. Send the command again after you start RCC. See [docs/SETUP_REFERENCE.md](./docs/SETUP_REFERENCE.md).
 
 ## Health checks
 
-### App Server health
-- can list or read thread state
-- can receive event stream
-- last heartbeat under threshold
+### App Server
 
-### Telegram health
-- bot token valid
-- can send test message to operator
-- callback routing active
-- slash commands installed (`/threads`, `/running`, `/pick`, `/last`, `/run`, `/say`, `/attach`, `/artifact`, `/approve`, `/deny`, `/status`)
+- RCC can list or read thread state.
+- RCC receives the event stream.
+- The last heartbeat is inside the freshness threshold. The threshold is `RCC_EVENT_FRESHNESS_MS`.
 
-### Registry health
-- SQLite writable
-- thread mappings readable
+### Telegram
+
+- The bot token works. A message from RCC reaches the operator.
+- Approval buttons reach the daemon.
+- The bot command menu is installed. `/status` shows `Telegram Commands: installed`.
+
+### Registry
+
+- SQLite is writable.
+- Thread mappings are readable.
 
 ## Remote operator model
 
-- RCC is `focused + alerts`, not a full multi-thread transcript mirror.
+- RCC uses focused streaming and background alerts. It does not mirror every thread transcript.
 - The picked thread gets live text updates.
-- Other active threads still send important alerts:
+- Other active threads send alerts for these events:
   - turn started
   - turn completed
   - approval needed
   - after-approval summary
-- `/last` is the authoritative sync command for the currently picked thread.
+- `/last` is the command that shows the current sync state for the picked thread.
 
 ## When remote control works
 
-- Mac is powered on and internet-connected
-- user session is unlocked
-- Codex desktop is running
-- RCC daemon is running
-- Telegram long polling is healthy
-- operator has picked the intended thread before expecting live stream output
+- The Mac is on and connected to the internet.
+- The user session is unlocked.
+- The Codex app is running.
+- The RCC daemon is running.
+- Telegram long polling is healthy.
+- The operator has picked the thread before expecting live output.
 
 ## When remote control only partly works
 
-- Codex App Server is unavailable but RCC is still running:
-  - `/status` still works
-  - desktop-log-derived thread and approval visibility may still work
-  - official turn control and official approval resolution may fail
-- desktop-only approvals are visible in Telegram, but resolution still depends on UI fallback prerequisites
-- artifacts written outside RCC watched paths may need manual retrieval
+- The Codex App Server is unavailable, but RCC still runs:
+  - `/status` still works.
+  - Thread and approval visibility from the desktop logs may still work.
+  - Turn control and approval resolution through the App Server may fail.
+- Desktop-only approvals appear in Telegram, but you can resolve them only if the UI fallback is ready. See the UI automation prerequisites below.
+- Artifacts written outside the watched artifact folder need manual retrieval.
 
-## When remote control will not work
+## When remote control does not work
 
-- Mac is asleep, shut down, offline, or the user session is locked
-- RCC daemon is not running
-- Codex approval UI is not visible for a desktop-only approval that requires AppleScript fallback
-- operator expects Telegram to mirror all active thread transcripts simultaneously
+- The Mac is asleep, shut down, offline, or locked.
+- The RCC daemon is not running.
+- A desktop-only approval needs the AppleScript fallback, and the Codex approval card is not on screen.
+- You expect Telegram to mirror every active thread at the same time.
 
 ## Approval incident handling
 
 ### Symptom
-Operator tapped approve, but nothing happened.
+
+You tapped Approve, and nothing happened.
 
 ### Checks
-- approval still pending and not expired
-- correct codex request id mapping
-- App Server connection active
+
+- The approval is still pending and has not expired.
+- The Codex request ID maps to the approval.
+- The App Server connection is active.
 
 ### Recovery
-- refresh thread state
-- resend approval card if still pending
-- mark prior card stale if superseded
-- if approval source is `app_server`, resolve via `/approve` or `/deny`
-- if approval source is `desktop_log_recovered`:
-  - with `RCC_APPROVAL_STRATEGY=appserver_only`: approve in Codex desktop
-  - with `RCC_APPROVAL_STRATEGY=appserver_then_ui` and `RCC_UI_AUTOMATION_ENABLED=true`: RCC attempts AppleScript fallback
+
+- Run `/approvals` to see whether the request is still pending.
+- If a card is superseded, use `/approvals` to find the current request. Old cards are rejected.
+- If the approval source is `app_server`, resolve it with `/approve` or `/deny`.
+- If the approval source is `desktop_log_recovered`:
+  - With `RCC_APPROVAL_STRATEGY=appserver_only`, approve it in the Codex desktop app.
+  - With `RCC_APPROVAL_STRATEGY=appserver_then_ui` and `RCC_UI_AUTOMATION_ENABLED=true`, RCC tries the AppleScript fallback.
 
 ### UI automation fallback prerequisites
-- macOS host with active GUI session
-- Codex app frontmost or activatable
-- Accessibility permission granted for the RCC process/terminal
-- approval card visibly present in the Codex window
-- if any prerequisite is missing, fallback will fail and RCC will instruct desktop approval
+
+- A macOS host with an active GUI session.
+- The Codex app is in front, or can be brought to the front.
+- The terminal or the RCC process has Accessibility permission.
+- The approval card is visible in the Codex window.
+
+If a prerequisite is missing, the fallback fails. RCC then tells you to approve in the desktop app.
 
 ## Attachment incident handling
 
 ### Symptom
-File uploaded from Telegram but Codex cannot see it.
+
+You uploaded a file from Telegram, but Codex cannot see it.
 
 ### Checks
-- Telegram file download succeeded
-- attachment row exists
-- local file exists at expected path
-- path is inside thread workspace
-- follow-up instruction was sent to thread
+
+- The Telegram file download succeeded.
+- The attachment row exists in the database.
+- The local file exists at the saved path.
+- The saved path is inside the thread's upload folder.
+- RCC sent the follow-up instruction to the thread.
 
 ### Recovery
-- re-materialize file to workspace
-- resend file reference instruction
+
+- Upload the file again with `/attach`.
+- Ask Codex to read the saved path that RCC reports.
 
 ## Artifact incident handling
 
 ### Symptom
-Artifact created but not sent.
+
+Codex wrote an artifact, but you did not receive it.
 
 ### Checks
-- artifact watcher scanned correct directory
-- file size under Telegram limit
-- sendDocument call succeeded
+
+- The artifact watcher scanned the right folder. Each thread has its own folder under the artifact root.
+- The file type is one that RCC lists.
+- The file is under the Telegram send limit.
+- The `sendDocument` call succeeded.
 
 ### Recovery
-- generate artifact manifest
-- provide operator with fetch command
-- if too large, compress or provide alternate retrieval path
+
+- Run `/artifact` to list the files again.
+- If the file is too large, RCC sends a zip or a manifest with the local path instead.
+- Retrieve the file from the Mac directly if you need the original.
 
 ## Git safety handling
 
-### Rule set
-- commit requires explicit approval
-- push requires separate explicit approval
-- pushing to `main` blocked in v1
+The public alpha does not let you commit or push from Telegram. The `/git-commit`, `/git-push`, and `/git-review` commands reply with a short message and do not run.
 
-### Recovery for unsafe request
-- deny action
-- send reason to operator
-- suggest feature branch alternative
+Pushes to `main` are blocked by policy. If Codex asks for one, deny the request and push from a feature branch on the Mac.
 
-## Live Mirroring Validation Workflow
+## Known limits
 
-Use this when validating RCC from Telegram Web in Comet `YORK + WORK`.
+- High-volume desktop threads can produce many approval cards and superseded notices. Old cards are rejected, so no action runs by mistake. The chat can be noisy.
 
-1. Start Codex desktop and keep the Mac awake, online, and unlocked.
+## Live validation checklist
+
+Use this checklist after you change RCC or before you rely on it for remote work.
+
+1. Start Codex on the Mac and keep the Mac awake, online, and unlocked.
 2. Start RCC from the repo root with `./run.sh`.
-3. Open Telegram Web to the RCC bot in Comet.
-4. Send `/status` and confirm:
+3. Open the bot in Telegram on your phone or in Telegram Web.
+4. Send `/status`. Confirm these lines:
    - `Daemon: alive`
    - `Codex Transport: connected`
    - `Telegram Commands: installed`
    - `Remote Mode: focused_thread_stream + background_alerts`
 5. Send `/threads 5` or `/running`.
-6. Select the intended thread with `/pick <index-or-id>`.
-7. Confirm focus with `/where` and `/last`.
+6. Select the thread with `/pick <index or id>`.
+7. Confirm the selection with `/where` and `/last`.
 8. Send `/run <task>` or `/say <change>`.
 9. Expect detailed live output only for the picked thread.
-10. Expect background threads to send only high-signal alerts: started, completed, approval needed, and after-approval summary.
-11. For files, run `/artifact`, review the list, then fetch explicitly with `/artifact send <n>`.
+10. Expect background threads to send only alerts: started, completed, approval needed, and after-approval summary.
+11. For files, run `/artifact`, review the list, then send the files you want with `/artifact send <n>`.
 
 ### Approval validation
 
 RCC supports two approval paths:
 
-- App Server approvals: resolved directly by `/approve <id>`, `/deny <id>`, or the Telegram card buttons.
-- Desktop-recovered approvals: visible from Codex desktop logs and resolved by AppleScript only when `RCC_APPROVAL_STRATEGY=appserver_then_ui`, `RCC_UI_AUTOMATION_ENABLED=true`, the Mac is unlocked, and the Codex approval card is visible.
+- App Server approvals. You resolve them with `/approve <id>`, `/deny <id>`, or the buttons on the card.
+- Desktop-recovered approvals. RCC sees them in the Codex desktop logs. It resolves them with AppleScript only when `RCC_APPROVAL_STRATEGY=appserver_then_ui`, `RCC_UI_AUTOMATION_ENABLED=true`, the Mac is unlocked, and the Codex approval card is visible.
 
-If desktop approval fallback cannot act, RCC must send an explicit reason instead of failing silently.
+If the desktop fallback cannot act, RCC sends a message that gives the reason. It does not fail silently.
 
-### Current known validation blocker
+## Quick verification
 
-High-volume desktop threads can produce many approval cards and superseded notices. This is safer than missing approvals, but noisy. The next UX hardening target is latest-only approval coalescing per thread, plus an `/approvals` command for the current actionable set.
-
-## Quick Verification
-
-Run before restart or release:
+Run this before you restart RCC or publish a change:
 
 ```bash
 npm run verify:quick
 ```
 
-This runs bounded typecheck and integration tests. It is not a replacement for live Telegram validation, but it catches protocol, approval, and command regressions quickly.
+The script runs these checks in order: the web static check, the relay syntax check, the tracked-file secret scan, the LaunchAgent static check, the TypeScript typecheck, and the integration tests. It does not check live Telegram or Codex behaviour. Run the live checklist above for that.
 
-## Approval Queue
+## Approval queue
 
-Use `/approvals` to see current actionable approvals. Superseded and expired approvals are hidden and old card callbacks are rejected. If an old approval card is tapped, use `/approvals` to find the current request.
+Use `/approvals` to see the approvals you can act on now. Superseded and expired approvals are hidden, and their old buttons are rejected. If you tap an old card, run `/approvals` to find the current request.
