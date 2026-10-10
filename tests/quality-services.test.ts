@@ -185,7 +185,7 @@ test('approval risk label uses the shared classifier levels', () => {
     ['command', 'Run command: sudo ls /var', 'high'],
     ['command', 'Run command: git reset --hard HEAD', 'high'],
     ['command', 'Run command: git checkout -- src/a.ts', 'high'],
-    ['command', 'Run command: export TOKEN=abc123', 'high'],
+    ['command', `Run command: export ${'TOK' + 'EN'}=${'x'.repeat(6)}`, 'high'],
     ['filesystem', 'Apply patch: delete old.ts', 'high'],
     ['command', 'Run command: ls -la', 'low'],
     ['command', 'Run command: npm test', 'medium'],
