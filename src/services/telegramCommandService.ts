@@ -17,6 +17,7 @@ import type { SteeringAgent } from '../agents/steeringAgent.js';
 
 import { buildApprovalDetails, type ApprovalRisk } from './approvalDetails.js';
 import { CodexSessionService } from './codexSessionService.js';
+import { chunkTextByLines } from '../utils/textChunks.js';
 // Telegram rejects messages longer than 4096 characters, so text is split below that limit.
 const TELEGRAM_TEXT_LIMIT = 3900;
 const DEFAULT_CODEX_LIST_LIMIT = 30;
@@ -1323,41 +1324,9 @@ export class TelegramCommandService {
         return deduped;
     }
     async sendText(chatId: string, text: string): Promise<void> {
-        const chunks = this.chunkText(text, TELEGRAM_TEXT_LIMIT);
+        const chunks = chunkTextByLines(text, TELEGRAM_TEXT_LIMIT);
         for (const chunk of chunks) {
             await this.telegramClient.sendMessage(chatId, chunk);
         }
-    }
-    chunkText(text: string, maxChars: number): string[] {
-        if (text.length <= maxChars) {
-            return [text];
-        }
-        const lines = text.split('\n');
-        const chunks = [];
-        let current = '';
-        for (const line of lines) {
-            const candidate = current ? `${current}\n${line}` : line;
-            if (candidate.length <= maxChars) {
-                current = candidate;
-                continue;
-            }
-            if (current) {
-                chunks.push(current);
-            }
-            if (line.length <= maxChars) {
-                current = line;
-                continue;
-            }
-            let rest = line;
-            while (rest.length > maxChars) {
-                chunks.push(rest.slice(0, maxChars));
-                rest = rest.slice(maxChars);
-            }
-            current = rest;
-        }
-        if (current) {
-            chunks.push(current);
-        }
-        return chunks;
     }
 }

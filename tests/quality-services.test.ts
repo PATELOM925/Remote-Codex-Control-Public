@@ -15,6 +15,8 @@ import { RccDaemon } from '../src/services/rccDaemon.js';
 import { canonicalPath } from '../src/utils/paths.js';
 import { latestCodexDbPath, CODEX_STATE_DB_PATTERN } from '../src/utils/codexState.js';
 import { slugify } from '../src/utils/slug.js';
+import { chunkTextByLines } from '../src/utils/textChunks.js';
+import type { MockTelegramClient as MockTelegramClientType } from '../src/adapters/telegram/mockTelegramClient.js';
 
 const makeConfig = (baseDir: string): RccConfig => ({
   dbPath: path.join(baseDir, 'rcc.sqlite'),
@@ -244,4 +246,71 @@ test('latestCodexDbPath returns the newest matching database file', () => {
   fs.utimesSync(logs, now, now);
 
   assert.equal(latestCodexDbPath(codexHome, CODEX_STATE_DB_PATTERN), newer);
+});
+
+// Telegram rejects messages longer than 4096 characters. The services split at 3900.
+const CHUNK_LIMIT = 3900;
+const TELEGRAM_MAX = 4096;
+
+test('chunkTextByLines keeps short text whole', () => {
+  assert.deepEqual(chunkTextByLines('one\ntwo', CHUNK_LIMIT), ['one\ntwo']);
+});
+
+test('chunkTextByLines splits multi-line text at line breaks', () => {
+  const lines = Array.from({ length: 300 }, (_, index) => `line ${index} ${'x'.repeat(60)}`);
+  const text = lines.join('\n');
+
+  const chunks = chunkTextByLines(text, CHUNK_LIMIT);
+
+  assert.ok(chunks.length > 1);
+  for (const chunk of chunks) {
+    assert.ok(chunk.length <= CHUNK_LIMIT, `chunk of ${chunk.length} characters`);
+  }
+  // Joining with a line break gives back the input, so no line was cut.
+  assert.equal(chunks.join('\n'), text);
+});
+
+test('chunkTextByLines cuts one very long line into pieces under the limit', () => {
+  const text = 'a'.repeat(10_000);
+
+  const chunks = chunkTextByLines(text, CHUNK_LIMIT);
+
+  assert.deepEqual(chunks.map((chunk) => chunk.length), [3900, 3900, 2200]);
+  assert.equal(chunks.join(''), text);
+});
+
+test('chunkTextByLines keeps short lines whole around a very long line', () => {
+  const text = ['short-1', 'y'.repeat(9_000), 'short-2'].join('\n');
+
+  const chunks = chunkTextByLines(text, CHUNK_LIMIT);
+
+  for (const chunk of chunks) {
+    assert.ok(chunk.length <= CHUNK_LIMIT);
+  }
+  assert.equal(chunks[0], 'short-1');
+  assert.ok(chunks[chunks.length - 1]?.endsWith('\nshort-2'));
+});
+
+test('telegram and daemon send paths split the same text the same way', async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-chunks-'));
+  const daemon = makeUnstartedDaemon(baseDir);
+  const telegramClient = daemon.telegramClient as unknown as MockTelegramClientType;
+  const text = [
+    'header line',
+    ...Array.from({ length: 200 }, (_, index) => `row ${index} ${'z'.repeat(50)}`),
+    'w'.repeat(9_000),
+    'footer line',
+  ].join('\n');
+
+  await daemon.telegramCommandService.sendText('chat-1', text);
+  const commandPath = telegramClient.sentMessages.splice(0).map((message) => message.text);
+  await (daemon as unknown as { sendText(chatId: string, text: string): Promise<void> }).sendText('chat-1', text);
+  const daemonPath = telegramClient.sentMessages.splice(0).map((message) => message.text);
+
+  assert.deepEqual(daemonPath, commandPath);
+  for (const chunk of commandPath) {
+    assert.ok(chunk.length <= TELEGRAM_MAX, `message of ${chunk.length} characters`);
+  }
+  assert.equal(commandPath[0]?.split('\n')[0], 'header line');
+  assert.ok(commandPath[commandPath.length - 1]?.endsWith('\nfooter line'));
 });

@@ -11,6 +11,7 @@ import { EventJournal } from '../event-journal/eventJournal.js';
 import { Logger } from '../logger.js';
 import { PolicyEngine } from '../policies/policyEngine.js';
 import { RccEventBus } from '../runtime/eventBus.js';
+import { chunkTextByLines } from '../utils/textChunks.js';
 import { slugify } from '../utils/slug.js';
 
 import { MockAppServerClient } from '../adapters/codex/mockAppServerClient.js';
@@ -729,7 +730,7 @@ export class RccDaemon {
 
   private async sendText(chatId: string, text: string): Promise<void> {
     // Telegram rejects messages longer than 4096 characters, so chunks stay below that limit.
-    const chunks = this.chunkText(text, 3900);
+    const chunks = chunkTextByLines(text, 3900);
     for (const chunk of chunks) {
       try {
         await this.telegramClient.sendMessage(chatId, chunk);
@@ -740,23 +741,6 @@ export class RccDaemon {
         return;
       }
     }
-  }
-
-  private chunkText(text: string, maxChars: number): string[] {
-    if (text.length <= maxChars) {
-      return [text];
-    }
-
-    const chunks: string[] = [];
-    let remaining = text;
-    while (remaining.length > maxChars) {
-      chunks.push(remaining.slice(0, maxChars));
-      remaining = remaining.slice(maxChars);
-    }
-    if (remaining) {
-      chunks.push(remaining);
-    }
-    return chunks;
   }
 
   private async bootstrapProjectsIfEmpty(): Promise<void> {
