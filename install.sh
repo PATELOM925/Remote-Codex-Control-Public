@@ -51,7 +51,6 @@ if [ -e "$INSTALL_DIR" ]; then
     fail "$INSTALL_DIR exists and is not a Remote Codex Control clone. Set RCC_DIR to an empty folder and run this again."
   fi
 else
-  echo "Cloning into $INSTALL_DIR"
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
