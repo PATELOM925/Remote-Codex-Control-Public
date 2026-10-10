@@ -1,6 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 const MEMORY_COMMAND_LIMIT = 250;
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_MESSAGE_BYTES = 64 * 1024;
+const MIN_TOKEN_LENGTH = 32;
 const VALID_ACTIONS = [
   'run',
   'plan',
@@ -48,10 +51,24 @@ const json = (response, status, value) => {
   response.end(JSON.stringify(value, null, 2));
 };
 
+class HttpError extends Error {
+  constructor(status, code) {
+    super(code);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 const readBody = async (request) => {
   const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_BODY_BYTES) {
+      throw new HttpError(413, 'relay_body_too_large');
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   return raw ? JSON.parse(raw) : {};
@@ -59,9 +76,19 @@ const readBody = async (request) => {
 
 const token = (request) => String(request.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
 
+const tokensMatch = (provided, expected) => {
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
+
 const auth = (request, response, role) => {
   const expected = role === 'mac' ? process.env.RCC_RELAY_MAC_TOKEN : process.env.RCC_RELAY_OPERATOR_TOKEN;
-  if (expected && token(request) === expected) {
+  if (!expected || expected.length < MIN_TOKEN_LENGTH) {
+    json(response, 503, { error: 'relay_not_configured', role });
+    return false;
+  }
+  if (tokensMatch(token(request), expected)) {
     return true;
   }
   json(response, 401, { error: 'relay_unauthorized', role });
@@ -171,11 +198,8 @@ const storageInfo = () => {
 const ensureStorageReady = (response) => {
   const config = storageConfig();
   if (config.mode === 'misconfigured') {
-    json(response, 503, {
-      error: 'relay_storage_misconfigured',
-      message: config.error,
-      storage: storageInfo(),
-    });
+    console.error(`relay-storage-misconfigured: ${config.error}`);
+    json(response, 503, { error: 'relay_storage_misconfigured' });
     return undefined;
   }
   return config;
@@ -526,6 +550,9 @@ export default async function handler(request, response) {
       const body = await readBody(request);
       validateAction(body.action);
       validateTargetKind(body.targetKind || 'daemon');
+      if (body.action !== 'attach_file' && Buffer.byteLength(String(body.message ?? ''), 'utf8') > MAX_MESSAGE_BYTES) {
+        throw new HttpError(413, 'relay_message_too_large');
+      }
       const command =
         config.mode === 'supabase' ? await supabaseCreateCommand(config, body) : memoryCreateCommand(body);
       json(response, 202, { command: sanitizeCommandForOperator(command), storage: storageInfo() });
@@ -603,8 +630,12 @@ export default async function handler(request, response) {
       return;
     }
 
-    json(response, 404, { error: 'relay_not_found', storage: storageInfo() });
+    json(response, 404, { error: 'relay_not_found' });
   } catch (error) {
+    if (error instanceof HttpError) {
+      json(response, error.status, { error: error.code });
+      return;
+    }
     json(response, 400, { error: error instanceof Error ? error.message : String(error), storage: storageInfo() });
   }
 }
