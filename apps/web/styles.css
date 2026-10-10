@@ -222,3 +222,8 @@ code { color: var(--blue); overflow-wrap: anywhere; }
   .skill-chip, .attachment-picker { width: 100%; }
   .drawer-card { width: 100%; padding: 16px; }
 }
+.demo-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; background: #2b2410; border-bottom: 1px solid rgba(240,182,91,.55); color: var(--text); font-size: .95rem; }
+.demo-banner p { margin: 0; }
+.demo-banner a { color: var(--accent); }
+.demo-page { padding-top: 96px; }
+@media (max-width: 640px) { .demo-page { padding-top: 150px; } }

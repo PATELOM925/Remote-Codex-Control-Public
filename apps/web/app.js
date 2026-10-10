@@ -1,15 +1,24 @@
+const demoMode = window.RCC_DEMO === true;
 const isHostedConsole = !['localhost', '127.0.0.1', '::1', ''].includes(window.location.hostname);
 const urlParams = new URLSearchParams(window.location.search);
-const savedMode = localStorage.getItem('rcc.mode');
+const prefKey = (key) => (demoMode ? key.replace(/^rcc\./, 'rcc.demo.') : key);
+const prefs = {
+  getItem: (key) => localStorage.getItem(prefKey(key)),
+  setItem: (key, value) => localStorage.setItem(prefKey(key), value),
+  removeItem: (key) => localStorage.removeItem(prefKey(key)),
+};
+const demoRelay = demoMode ? window.RccDemoRelay.createDemoRelay() : null;
+const savedMode = prefs.getItem('rcc.mode');
 const requestedMode = urlParams.get('mode');
 const initialMode = (() => {
+  if (demoMode) return 'relay';
   if (requestedMode === 'local' || requestedMode === 'relay') return requestedMode;
   if (isHostedConsole) return 'relay';
   return savedMode === 'local' || savedMode === 'relay' ? savedMode : 'local';
 })();
 const readJsonStorage = (key, fallback) => {
   try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    return JSON.parse(prefs.getItem(key) || JSON.stringify(fallback));
   } catch {
     return fallback;
   }
@@ -30,24 +39,24 @@ const initialAppView = normalizeAppView(urlParams.get('view'));
 
 const state = {
   mode: initialMode,
-  localBaseUrl: localStorage.getItem('rcc.localBaseUrl') || localStorage.getItem('rcc.baseUrl') || 'http://127.0.0.1:4765',
-  relayBaseUrl: localStorage.getItem('rcc.relayBaseUrl') || '',
-  localToken: sessionStorage.getItem('rcc.localToken') || sessionStorage.getItem('rcc.webToken') || '',
-  relayToken: sessionStorage.getItem('rcc.relayToken') || '',
+  localBaseUrl: prefs.getItem('rcc.localBaseUrl') || prefs.getItem('rcc.baseUrl') || 'http://127.0.0.1:4765',
+  relayBaseUrl: prefs.getItem('rcc.relayBaseUrl') || '',
+  localToken: demoMode ? '' : sessionStorage.getItem('rcc.localToken') || sessionStorage.getItem('rcc.webToken') || '',
+  relayToken: demoMode ? '' : sessionStorage.getItem('rcc.relayToken') || '',
   token: '',
   dashboard: null,
   threadCatalog: [],
   threadCatalogMeta: null,
-  selectedProjectId: localStorage.getItem('rcc.selectedProjectId') || '',
-  projectSearch: localStorage.getItem('rcc.projectSearch') || '',
+  selectedProjectId: prefs.getItem('rcc.selectedProjectId') || '',
+  projectSearch: prefs.getItem('rcc.projectSearch') || '',
   visibleProjectCount: 8,
   visibleThreadCount: 8,
-  selectedThreadId: localStorage.getItem('rcc.selectedThreadId') || '',
-  composerText: localStorage.getItem('rcc.composerText') || '',
-  composerMode: localStorage.getItem('rcc.composerMode') || 'plan',
-  composerModel: localStorage.getItem('rcc.composerModel') || '',
-  composerReasoningEffort: localStorage.getItem('rcc.composerReasoningEffort') || 'high',
-  composerSpeedPreset: localStorage.getItem('rcc.composerSpeedPreset') || 'balanced',
+  selectedThreadId: prefs.getItem('rcc.selectedThreadId') || '',
+  composerText: prefs.getItem('rcc.composerText') || '',
+  composerMode: prefs.getItem('rcc.composerMode') || 'plan',
+  composerModel: prefs.getItem('rcc.composerModel') || '',
+  composerReasoningEffort: prefs.getItem('rcc.composerReasoningEffort') || 'high',
+  composerSpeedPreset: prefs.getItem('rcc.composerSpeedPreset') || 'balanced',
   pendingSteerConfirm: false,
   composerBusy: false,
   selectedSkills: readJsonStorage('rcc.selectedSkills', []),
@@ -64,7 +73,7 @@ const state = {
   lastRefreshAt: '',
   relayCommandState: null,
   activeAppView: initialAppView,
-  sidebarCollapsed: localStorage.getItem('rcc.workspaceSidebarCollapsed') === 'true',
+  sidebarCollapsed: prefs.getItem('rcc.workspaceSidebarCollapsed') === 'true',
 };
 
 const $ = (id) => document.querySelector(`#${id}`);
@@ -126,7 +135,10 @@ const endpointFor = (baseUrl, path) => {
 };
 const localEndpoint = (path) => endpointFor(state.localBaseUrl, path);
 const relayEndpoint = (path) => endpointFor(state.relayBaseUrl, path);
-const currentModeLabel = () => (state.mode === 'relay' ? 'Remote Relay' : 'Local RCC API');
+const currentModeLabel = () => {
+  if (demoMode) return 'Demo Mac (simulated)';
+  return state.mode === 'relay' ? 'Remote Relay' : 'Local RCC API';
+};
 const activeToken = () => (state.mode === 'relay' ? state.relayToken : state.localToken);
 const selectedThread = () => (
   state.threadCatalog.find((thread) => thread.id === state.selectedThreadId)
@@ -159,7 +171,9 @@ const requestUrl = async (url, options = {}) => {
     ...(state.token ? { authorization: `Bearer ${state.token}` } : {}),
     ...(options.headers || {}),
   };
-  const response = await fetch(url, { ...options, headers, cache: 'no-store' });
+  const response = demoRelay
+    ? await demoRelay.respond(url, { ...options, headers })
+    : await fetch(url, { ...options, headers, cache: 'no-store' });
   const body = await readResponseBody(response);
   if (!response.ok) {
     throw new Error(`${response.status} ${parseError(body)}`);
@@ -171,7 +185,7 @@ const request = async (path, options = {}) => requestUrl(localEndpoint(path), op
 const action = async (path, body) => request(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
 
 const requireRelayToken = () => {
-  if (!state.relayToken) {
+  if (!demoMode && !state.relayToken) {
     throw new Error('Relay token required. Enter the relay Bearer token; RCC does not ship with a default token.');
   }
 };
@@ -214,7 +228,7 @@ const relayCommandAndWait = async (payload = {}, timeoutMs = 22_000) => {
   setRelayCommandState({
     kind: 'pending',
     label: 'Command queued',
-    detail: `${payload.action || 'command'} waiting for the Mac daemon`,
+    detail: `${payload.action || 'command'} waiting for ${demoMode ? 'the simulated Mac' : 'the Mac daemon'}`,
   });
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -501,7 +515,7 @@ const renderProjects = () => {
   const selectedGroup = groups.find((group) => group.id === state.selectedProjectId) || groups[0] || null;
   if ((!state.selectedProjectId || !groups.some((group) => group.id === state.selectedProjectId)) && selectedGroup) {
     state.selectedProjectId = selectedGroup.id;
-    localStorage.setItem('rcc.selectedProjectId', state.selectedProjectId);
+    prefs.setItem('rcc.selectedProjectId', state.selectedProjectId);
   }
   const baseVisible = groups.slice(0, state.visibleProjectCount);
   const visible = selectedGroup && !baseVisible.some((group) => group.id === selectedGroup.id)
@@ -588,6 +602,7 @@ const openApprovalDrawer = (approvalId) => {
 };
 
 const downloadLocalArtifact = async (artifactId, filename) => {
+  if (demoMode) throw new Error('Artifact download is not available in the demo.');
   updateActiveToken();
   const response = await fetch(localEndpoint(`/api/artifacts/${encodeURIComponent(artifactId)}/download`), {
     headers: state.token ? { authorization: `Bearer ${state.token}` } : {},
@@ -606,14 +621,15 @@ const downloadLocalArtifact = async (artifactId, filename) => {
 };
 
 const renderArtifacts = (artifacts = []) => {
-  const actionLabel = state.mode === 'relay' ? 'Request from Mac' : 'Download';
-  $('artifacts').innerHTML = artifacts.map((artifact) => `
+  const actionLabel = demoMode ? 'Not in demo' : (state.mode === 'relay' ? 'Request from Mac' : 'Download');
+  const demoNote = demoMode ? '<p class="muted small-copy">Artifact files are not included in the demo.</p>' : '';
+  $('artifacts').innerHTML = demoNote + (artifacts.map((artifact) => `
     <div class="card" data-artifact-id="${escapeHtml(artifact.id)}" data-filename="${escapeHtml(artifact.filename)}">
       <div class="card-title"><strong>${escapeHtml(artifact.filename || artifact.id)}</strong><span class="tag">${escapeHtml(artifact.status || 'artifact')}</span></div>
       <p class="muted">${escapeHtml(artifact.projectName)} / ${escapeHtml(artifact.threadName)} | ${escapeHtml(artifact.sizeBytes || 0)} bytes</p>
-      <button data-action="download">${actionLabel}</button>
+      <button data-action="download" ${demoMode ? 'disabled' : ''}>${actionLabel}</button>
     </div>
-  `).join('') || '<p class="muted">No artifacts detected.</p>';
+  `).join('') || '<p class="muted">No artifacts detected.</p>');
 };
 
 const renderEvents = (events = []) => {
@@ -630,11 +646,17 @@ const statusLineValue = (statusText = '', label) => {
 const renderSession = (data = {}) => {
   const snapshotAge = snapshotGeneratedAt() ? ageLabel(snapshotGeneratedAt()) : 'unknown';
   const macFresh = isRelaySnapshotFresh();
+  const transportNote = demoMode
+    ? 'Simulated in this browser. No computer is connected.'
+    : (state.mode === 'relay' ? 'Phone/browser talks to Vercel; the Mac polls safely outbound.' : 'Browser talks directly to the Mac daemon.');
+  const macLabel = demoMode
+    ? 'Simulated Mac online'
+    : (state.mode === 'relay' ? (macFresh ? 'Mac daemon connected' : 'Mac snapshot stale') : 'Mac daemon direct');
   $('modeBadge').textContent = currentModeLabel();
   $('sessionPanel').innerHTML = `
     <div class="session-grid">
-      <div class="mini-status"><span class="status-dot ${state.mode === 'relay' ? 'pending' : 'completed'}"></span><strong>${escapeHtml(currentModeLabel())}</strong><small>${state.mode === 'relay' ? 'Phone/browser talks to Vercel; the Mac polls safely outbound.' : 'Browser talks directly to the Mac daemon.'}</small></div>
-      <div class="mini-status"><span class="status-dot ${macFresh ? 'completed' : 'failed'}"></span><strong>${state.mode === 'relay' ? (macFresh ? 'Mac daemon connected' : 'Mac snapshot stale') : 'Mac daemon direct'}</strong><small>Last snapshot ${escapeHtml(snapshotAge)}</small></div>
+      <div class="mini-status"><span class="status-dot ${state.mode === 'relay' ? 'pending' : 'completed'}"></span><strong>${escapeHtml(currentModeLabel())}</strong><small>${transportNote}</small></div>
+      <div class="mini-status"><span class="status-dot ${macFresh ? 'completed' : 'failed'}"></span><strong>${escapeHtml(macLabel)}</strong><small>Last snapshot ${escapeHtml(snapshotAge)}</small></div>
       <div class="mini-status"><span class="status-dot idle"></span><strong>Codex auth stays on Mac</strong><small>No Codex password or OpenAI token is stored by this website.</small></div>
     </div>
   `;
@@ -798,8 +820,8 @@ const clearStaleSelectedThread = () => {
   state.pendingSteerConfirm = false;
   state.availableSkills = [];
   state.selectedSkills = [];
-  localStorage.removeItem('rcc.selectedThreadId');
-  localStorage.setItem('rcc.selectedSkills', '[]');
+  prefs.removeItem('rcc.selectedThreadId');
+  prefs.setItem('rcc.selectedSkills', '[]');
   renderThreadPlaceholder(`Previously selected thread ${staleThreadId} is not in the loaded catalog. Pick a current thread to resume local control.`);
   updateComposerState();
   return true;
@@ -968,7 +990,7 @@ const openThread = async (threadId) => {
   state.threadDetailRequestSeq = requestSeq;
   state.activeAppView = 'workspace';
   state.selectedThreadId = threadId;
-  localStorage.setItem('rcc.selectedThreadId', threadId);
+  prefs.setItem('rcc.selectedThreadId', threadId);
   renderProjects();
   updateComposerState();
   if (state.mode === 'relay' && !isRelaySnapshotFresh()) {
@@ -1021,7 +1043,7 @@ const loadThreadSkills = async (threadId) => {
     state.selectedSkills = state.selectedSkills.filter((name) =>
       state.availableSkills.some((skill) => skill.name === name && skill.enabled !== false),
     );
-    localStorage.setItem('rcc.selectedSkills', JSON.stringify(state.selectedSkills));
+    prefs.setItem('rcc.selectedSkills', JSON.stringify(state.selectedSkills));
     updateComposerState();
   } catch (error) {
     state.availableSkills = [];
@@ -1259,7 +1281,7 @@ const sendComposerAction = async (actionName) => {
     return;
   }
   state.composerText = $('composerInput').value;
-  localStorage.setItem('rcc.composerText', state.composerText);
+  prefs.setItem('rcc.composerText', state.composerText);
   const message = composerPayload();
   if ((actionName === 'auto' || actionName === 'run' || actionName === 'say') && !message.trim()) {
     toast('Add an instruction before sending.');
@@ -1338,13 +1360,13 @@ const startAutoRefresh = () => {
     refresh().catch((error) => {
       setRefreshButtonState('failed', `Live refresh paused: ${String(error)}`);
     });
-  }, state.mode === 'relay' ? 15000 : 5000);
+  }, demoMode ? 2000 : (state.mode === 'relay' ? 15000 : 5000));
 };
 
 const setMode = (mode) => {
   state.mode = mode === 'relay' ? 'relay' : 'local';
   updateActiveToken();
-  localStorage.setItem('rcc.mode', state.mode);
+  prefs.setItem('rcc.mode', state.mode);
   document.querySelectorAll('input[name="mode"]').forEach((input) => {
     input.checked = input.value === state.mode;
   });
@@ -1365,31 +1387,66 @@ const saveFormState = () => {
   state.localToken = $('localToken').value.trim();
   state.relayToken = $('relayToken').value.trim();
   updateActiveToken();
-  localStorage.setItem('rcc.localBaseUrl', state.localBaseUrl);
-  localStorage.setItem('rcc.baseUrl', state.localBaseUrl);
-  localStorage.setItem('rcc.relayBaseUrl', state.relayBaseUrl);
+  prefs.setItem('rcc.localBaseUrl', state.localBaseUrl);
+  prefs.setItem('rcc.baseUrl', state.localBaseUrl);
+  prefs.setItem('rcc.relayBaseUrl', state.relayBaseUrl);
   sessionStorage.setItem('rcc.localToken', state.localToken);
   sessionStorage.setItem('rcc.webToken', state.localToken);
   sessionStorage.setItem('rcc.relayToken', state.relayToken);
 };
 
-$('localBaseUrl').value = state.localBaseUrl;
-$('relayBaseUrl').value = state.relayBaseUrl;
-$('localToken').value = state.localToken;
-$('relayToken').value = state.relayToken;
+if (!demoMode) {
+  $('localBaseUrl').value = state.localBaseUrl;
+  $('relayBaseUrl').value = state.relayBaseUrl;
+  $('localToken').value = state.localToken;
+  $('relayToken').value = state.relayToken;
+}
 $('projectSearch').value = state.projectSearch;
 $('composerInput').value = state.composerText;
 $('composerModel').value = state.composerModel;
 $('composerReasoning').value = state.composerReasoningEffort;
 $('composerSpeed').value = state.composerSpeedPreset;
-setMode(state.mode);
+if (!demoMode) setMode(state.mode);
 updateComposerState();
-if (!state.dashboard && (window.location.hash === '#app' || urlParams.has('view'))) {
+if (!demoMode && !state.dashboard && (window.location.hash === '#app' || urlParams.has('view'))) {
   $('sessionResult').textContent = `Connect first to open ${appViewLabel(state.activeAppView)}. RCC sends tokens as Authorization headers only; do not put tokens in URLs.`;
 }
 
+const connectDemo = async () => {
+  $('sessionResult').textContent = 'Connecting to the simulated Mac...';
+  const snapshot = await fetchSnapshot();
+  $('sessionResult').textContent = 'Connected to the simulated Mac. Nothing you do here leaves this browser.';
+  state.dashboard = snapshot;
+  renderDashboard(snapshot);
+  showAppView();
+  refreshThreadCatalog().catch((error) => {
+    $('threadCatalogMeta').textContent = `Demo threads did not load: ${String(error)}`;
+  });
+  startAutoRefresh();
+};
+
+const resetDemo = async () => {
+  demoRelay.reset();
+  state.selectedThreadId = '';
+  state.composerText = '';
+  state.pendingSteerConfirm = false;
+  prefs.removeItem('rcc.selectedThreadId');
+  prefs.removeItem('rcc.composerText');
+  $('composerInput').value = '';
+  setRelayCommandState(null);
+  renderThreadPlaceholder('Demo reset. Pick a thread to open it.');
+  await connectDemo();
+  toast('Demo reset.');
+};
+
 $('connectForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (demoMode) {
+    connectDemo().catch((error) => {
+      $('sessionResult').textContent = String(error);
+    });
+    return;
+  }
   try {
     saveFormState();
     $('sessionResult').textContent = `Connecting with ${currentModeLabel()}...`;
@@ -1438,7 +1495,7 @@ $('connectForm').addEventListener('submit', async (event) => {
           'Required local setup:',
           'RCC_WEB_CONTROL_ENABLED=true',
           'RCC_WEB_AUTH_TOKEN=<private-token>',
-          'RCC_WEB_ALLOWED_ORIGINS=https://rcc-magnus-alpha.vercel.app',
+          'RCC_WEB_ALLOWED_ORIGINS=<your relay URL>',
           '',
           'The Codex account stays in the local Codex app/CLI; this web console signs into RCC, not OpenAI directly.',
         ].join('\n');
@@ -1468,19 +1525,21 @@ document.querySelectorAll('[data-section-link]').forEach((link) => {
   });
 });
 
+$('demoResetButton')?.addEventListener('click', () => resetDemo().catch((error) => alert(String(error))));
+
 $('refreshButton').addEventListener('click', () => refresh().catch((error) => {
   $('healthPanel').innerHTML = `<div class="health-card"><span class="status-dot failed"></span><div><strong>Refresh failed</strong><small>${escapeHtml(String(error))}</small></div></div>`;
 }));
 $('threadCatalogRefresh').addEventListener('click', () => withRefreshState('Refreshing thread library', refreshThreadCatalog).catch((error) => { $('threadCatalogMeta').textContent = String(error); }));
 $('projectSearch').addEventListener('input', () => {
   state.projectSearch = $('projectSearch').value;
-  localStorage.setItem('rcc.projectSearch', state.projectSearch);
+  prefs.setItem('rcc.projectSearch', state.projectSearch);
   state.visibleProjectCount = 8;
   renderProjects();
 });
 $('workspaceSidebarToggle').addEventListener('click', () => {
   state.sidebarCollapsed = !state.sidebarCollapsed;
-  localStorage.setItem('rcc.workspaceSidebarCollapsed', String(state.sidebarCollapsed));
+  prefs.setItem('rcc.workspaceSidebarCollapsed', String(state.sidebarCollapsed));
   updateWorkspaceSidebarState();
 });
 $('liveThreadRefresh').addEventListener('click', () => {
@@ -1493,7 +1552,7 @@ $('liveThreadRefresh').addEventListener('click', () => {
 
 $('composerInput').addEventListener('input', () => {
   state.composerText = $('composerInput').value;
-  localStorage.setItem('rcc.composerText', state.composerText);
+  prefs.setItem('rcc.composerText', state.composerText);
   state.pendingSteerConfirm = false;
   updateComposerState();
 });
@@ -1501,7 +1560,7 @@ $('composerInput').addEventListener('input', () => {
 document.querySelectorAll('.mode-toggle .toggle').forEach((button) => {
   button.addEventListener('click', () => {
     state.composerMode = button.dataset.mode === 'build' ? 'build' : 'plan';
-    localStorage.setItem('rcc.composerMode', state.composerMode);
+    prefs.setItem('rcc.composerMode', state.composerMode);
     state.pendingSteerConfirm = false;
     updateComposerState();
   });
@@ -1509,22 +1568,22 @@ document.querySelectorAll('.mode-toggle .toggle').forEach((button) => {
 
 $('composerModel').addEventListener('change', () => {
   state.composerModel = $('composerModel').value;
-  localStorage.setItem('rcc.composerModel', state.composerModel);
+  prefs.setItem('rcc.composerModel', state.composerModel);
 });
 
 $('composerReasoning').addEventListener('change', () => {
   state.composerReasoningEffort = $('composerReasoning').value;
-  localStorage.setItem('rcc.composerReasoningEffort', state.composerReasoningEffort);
+  prefs.setItem('rcc.composerReasoningEffort', state.composerReasoningEffort);
 });
 
 $('composerSpeed').addEventListener('change', () => {
   state.composerSpeedPreset = $('composerSpeed').value;
-  localStorage.setItem('rcc.composerSpeedPreset', state.composerSpeedPreset);
+  prefs.setItem('rcc.composerSpeedPreset', state.composerSpeedPreset);
   if (state.composerSpeedPreset === 'fast') state.composerReasoningEffort = 'low';
   if (state.composerSpeedPreset === 'deep') state.composerReasoningEffort = 'xhigh';
   if (state.composerSpeedPreset === 'balanced' && !state.composerReasoningEffort) state.composerReasoningEffort = 'high';
   $('composerReasoning').value = state.composerReasoningEffort;
-  localStorage.setItem('rcc.composerReasoningEffort', state.composerReasoningEffort);
+  prefs.setItem('rcc.composerReasoningEffort', state.composerReasoningEffort);
 });
 
 $('skillChips').addEventListener('click', (event) => {
@@ -1534,7 +1593,7 @@ $('skillChips').addEventListener('click', (event) => {
   state.selectedSkills = state.selectedSkills.includes(skill)
     ? state.selectedSkills.filter((item) => item !== skill)
     : [...state.selectedSkills, skill];
-  localStorage.setItem('rcc.selectedSkills', JSON.stringify(state.selectedSkills));
+  prefs.setItem('rcc.selectedSkills', JSON.stringify(state.selectedSkills));
   updateComposerState();
 });
 
@@ -1599,7 +1658,7 @@ $('projects').addEventListener('click', (event) => {
   state.activeAppView = 'workspace';
   renderAppView();
   state.selectedProjectId = card.dataset.projectId || '';
-  localStorage.setItem('rcc.selectedProjectId', state.selectedProjectId);
+  prefs.setItem('rcc.selectedProjectId', state.selectedProjectId);
   state.visibleThreadCount = 8;
   renderProjects();
 });
@@ -1681,3 +1740,9 @@ $('artifacts').addEventListener('click', async (event) => {
     alert(String(error));
   }
 });
+
+if (demoMode && window.location.hash === '#app') {
+  connectDemo().catch((error) => {
+    $('sessionResult').textContent = String(error);
+  });
+}
