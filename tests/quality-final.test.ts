@@ -4,9 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { CodexAppServerClient } from '../src/adapters/codex/codexAppServerClient.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
+import type { AppServerEvent } from '../src/contracts/codex.js';
 import { Logger } from '../src/logger.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 import type { UiApprovalAutomationService } from '../src/services/uiApprovalAutomationService.js';
@@ -76,6 +78,8 @@ const startDaemon = async (options: {
   await daemon.start();
   return { daemon, baseDir, telegramClient };
 };
+
+const waitForAsyncHandlers = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 25));
 
 const countEvents = (daemon: RccDaemon, eventType: string): number =>
   (
@@ -171,4 +175,67 @@ test('stopping the daemon closes the App Server client exactly once', async () =
   daemon.stop();
 
   assert.equal(appServerClient.closeCalls, 1);
+});
+
+test('thread/status/changed is reported as a status change, not a thread start', () => {
+  const client = new CodexAppServerClient({ mode: 'stdio', command: 'unused', logger: new Logger('error') });
+  const events: AppServerEvent[] = [];
+  client.onEvent((event) => events.push(event));
+  const handleNotification = (
+    client as unknown as { handleNotification(notification: { method: string; params: unknown }): void }
+  ).handleNotification.bind(client);
+
+  handleNotification({ method: 'thread/status/changed', params: { threadId: 'codex-status', status: { type: 'idle' } } });
+  handleNotification({
+    method: 'thread/started',
+    params: { thread: { id: 'codex-new', cwd: '/tmp/project', name: 'New', status: { type: 'idle' } } },
+  });
+
+  assert.deepEqual(
+    events.map((event) => [event.type, event.codexThreadId, event.status]),
+    [
+      ['thread_status_changed', 'codex-status', 'idle'],
+      ['thread_started', 'codex-new', 'idle'],
+    ],
+  );
+});
+
+test('a status change updates the thread status the same way a thread start does', async () => {
+  class CapturingAppServerClient extends MockAppServerClient {
+    readonly listeners: Array<(event: AppServerEvent) => void> = [];
+
+    override onEvent(listener: (event: AppServerEvent) => void): void {
+      this.listeners.push(listener);
+      super.onEvent(listener);
+    }
+
+    deliver(event: AppServerEvent): void {
+      for (const listener of this.listeners) {
+        listener(event);
+      }
+    }
+  }
+
+  const appServerClient = new CapturingAppServerClient();
+  const { daemon, baseDir } = await startDaemon({ appServerClient });
+  try {
+    const thread = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-status-bridge',
+      cwd: baseDir,
+      threadName: 'Status thread',
+      status: 'idle',
+    });
+
+    appServerClient.deliver({
+      type: 'thread_status_changed',
+      timestamp: new Date().toISOString(),
+      codexThreadId: 'codex-status-bridge',
+      status: 'running',
+    });
+    await waitForAsyncHandlers();
+
+    assert.equal(daemon.sessionRegistry.findThreadById(thread.id)?.status, 'running');
+  } finally {
+    daemon.stop();
+  }
 });

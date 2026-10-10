@@ -469,7 +469,7 @@ export class CodexAppServerClient implements AppServerClient {
           break;
         }
         this.emit({
-          type: 'thread_started',
+          type: 'thread_status_changed',
           timestamp,
           codexThreadId,
           status: this.mapThreadStatus(params.status as Record<string, unknown>),

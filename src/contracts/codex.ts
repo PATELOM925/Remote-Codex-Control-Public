@@ -72,6 +72,7 @@ export interface CodexSkillRef {
 export interface AppServerEvent {
   type:
     | 'thread_started'
+    | 'thread_status_changed'
     | 'turn_started'
     | 'turn_completed'
     | 'turn_interrupted'

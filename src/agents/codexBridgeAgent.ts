@@ -764,7 +764,9 @@ export class CodexBridgeAgent {
           this.sessionRegistry.setThreadStatus(thread.id, 'waiting_approval');
           break;
         }
-        case 'thread_started': {
+        // A status change updates the thread the same way a thread start does.
+        case 'thread_started':
+        case 'thread_status_changed': {
           if (!event.codexThreadId) {
             return;
           }
