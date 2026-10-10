@@ -35,7 +35,8 @@ if ! [[ "$TIMEOUT_SEC" =~ ^[0-9]+$ ]]; then
 fi
 
 # getUpdates long-polls for up to the timeout. Send the bot a message while this runs so its chat id is returned.
-payload="$(curl -sS "https://api.telegram.org/bot${TOKEN}/getUpdates?limit=50&timeout=${TIMEOUT_SEC}" || true)"
+# The URL goes to curl on stdin so the token is not in the process list.
+payload="$(printf 'url = "%s"\n' "https://api.telegram.org/bot${TOKEN}/getUpdates?limit=50&timeout=${TIMEOUT_SEC}" | curl -sS --config - || true)"
 
 python3 - <<'PY' "$payload"
 import json, sys

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import type { RccConfig } from '../src/config.js';
 import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.js';
@@ -11,6 +13,8 @@ import { Logger } from '../src/logger.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 
 process.env.RCC_CODEX_DESKTOP_APPROVAL_CARD_GRACE_MS = '0';
+
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 const makeConfig = (baseDir: string): RccConfig => ({
   dbPath: path.join(baseDir, 'rcc.sqlite'),
@@ -275,4 +279,54 @@ test('relay upload rejects a fourth file per command', async () => {
   } finally {
     daemon.stop();
   }
+});
+
+test('telegram chat id script keeps the bot token out of curl arguments', async () => {
+  const fakeToken = '123456789:FAKE_test_token_not_real';
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-chat-ids-'));
+  const scriptsDir = path.join(root, 'scripts');
+  const binDir = path.join(root, 'bin');
+  fs.mkdirSync(scriptsDir);
+  fs.mkdirSync(binDir);
+  fs.copyFileSync(path.join(repoRoot, 'scripts', 'telegram_chat_ids.sh'), path.join(scriptsDir, 'telegram_chat_ids.sh'));
+  fs.writeFileSync(path.join(root, 'setup.md'), `RCC_TELEGRAM_BOT_TOKEN=${fakeToken}\n`);
+  // Stub curl: records its arguments and stdin, then prints the response file written by each run.
+  fs.writeFileSync(path.join(binDir, 'curl'), [
+    '#!/usr/bin/env bash',
+    'printf "%s\\n" "$@" > "$CURL_LOG_DIR/args.txt"',
+    'cat > "$CURL_LOG_DIR/stdin.txt"',
+    'cat "$CURL_LOG_DIR/response.json"',
+    '',
+  ].join('\n'), { mode: 0o755 });
+
+  const runScript = (response: string) => {
+    fs.writeFileSync(path.join(root, 'response.json'), response);
+    return spawnSync('bash', [path.join(scriptsDir, 'telegram_chat_ids.sh'), '30'], {
+      encoding: 'utf8',
+      input: '',
+      env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`, CURL_LOG_DIR: root },
+    });
+  };
+
+  const empty = runScript('{"ok":true,"result":[]}');
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.match(empty.stdout, /No pending updates found\./);
+
+  const withChat = runScript('{"ok":true,"result":[{"update_id":1,"message":{"chat":{"id":4242,"type":"private","username":"tester"}}}]}');
+  assert.equal(withChat.status, 0, withChat.stderr);
+  assert.equal(withChat.stdout, [
+    'Discovered chat ids (use the numeric id for RCC_OPERATOR_CHAT_ID):',
+    '- 4242 | private | tester',
+    '',
+    'Suggested setup.md values:',
+    'RCC_OPERATOR_CHAT_ID=4242',
+    'RCC_ALLOWED_CHAT_IDS=4242',
+    '',
+  ].join('\n'));
+
+  const args = fs.readFileSync(path.join(root, 'args.txt'), 'utf8');
+  const stdin = fs.readFileSync(path.join(root, 'stdin.txt'), 'utf8');
+  assert.ok(!args.includes(fakeToken), 'bot token must not appear in curl arguments');
+  assert.ok(!args.includes('getUpdates'), 'request URL must not appear in curl arguments');
+  assert.equal(stdin, `url = "https://api.telegram.org/bot${fakeToken}/getUpdates?limit=50&timeout=30"\n`);
 });
