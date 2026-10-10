@@ -19,6 +19,8 @@ logs/
 .env.*
 !.env.example
 setup.md
+setup.md.bak-*
+setup.md.tmp-*
 .codex/
 .vercel/
 STATUS_SNAPSHOT.md

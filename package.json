@@ -14,6 +14,7 @@
     "test": "node --test --import tsx tests/rcc.integration.test.ts",
     "start": "node --import tsx src/main.ts",
     "demo": "node --import tsx scripts/demo-replay.ts",
+    "setup": "node --import tsx scripts/setup-wizard.ts",
     "web:check": "node scripts/check-web-static.mjs",
     "relay:check": "node --check api/relay.js",
     "secrets:check": "node scripts/no-secret-scan.mjs",

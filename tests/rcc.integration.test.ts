@@ -16,6 +16,18 @@ import { RelayHttpServer } from '../src/relay/relayHttpServer.js';
 import { registerConfiguredProjects } from '../src/services/configuredProjects.js';
 import { RelayClientService } from '../src/services/relayClientService.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
+import {
+  captureOperatorChat,
+  fetchBotIdentity,
+  isBotTokenShape,
+  isNodeVersionSupported,
+  parseArgs,
+  renderSetupMd,
+  runWizard,
+  WizardError,
+  type ChatCandidate,
+  type WizardDeps,
+} from '../scripts/setup-wizard.js';
 import { redactSensitiveText } from '../src/utils/redaction.js';
 import { loadConfig, type RccConfig } from '../src/config.js';
 import {
@@ -3572,4 +3584,430 @@ test('RCC_PROJECT_ROOTS registers each folder once and reports missing folders',
   } finally {
     daemon.stop();
   }
+});
+
+// The tokens below are fake. They have the right shape, and the test joins the parts so the secret scan stays quiet.
+const FAKE_BOT_CREDENTIAL = ['123456789', 'AAFakeWizardTokenForTestsOnly0123456789'].join(':');
+const FAKE_BOT_CREDENTIAL_OTHER = ['987654321', 'BBFakeWizardTokenForTestsOnly0123456789'].join(':');
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+
+interface TelegramReply {
+  status?: number;
+  body: unknown;
+}
+
+const okBody = (result: unknown): TelegramReply => ({ body: { ok: true, result } });
+const rejectedBody: TelegramReply = { status: 401, body: { ok: false, error_code: 401, description: 'Unauthorized' } };
+
+const telegramFetch = (
+  reply: (method: string, body: Record<string, unknown>) => TelegramReply | Error,
+): typeof fetch =>
+  (async (input: string | URL | Request, init?: RequestInit) => {
+    const method = String(input).split('/').pop() ?? '';
+    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+    const outcome = reply(method, body);
+    if (outcome instanceof Error) {
+      throw outcome;
+    }
+    return new Response(JSON.stringify(outcome.body), { status: outcome.status ?? 200 });
+  }) as unknown as typeof fetch;
+
+const makeWizardTempDir = (): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-setup-test-'));
+  fs.mkdirSync(path.join(dir, 'project'));
+  return dir;
+};
+
+const makeWizardDeps = (options: {
+  dir: string;
+  fetch?: typeof fetch;
+  answers?: string[];
+  secrets?: string[];
+  env?: Record<string, string | undefined>;
+  clock?: { now(): number };
+}) => {
+  const logs: string[] = [];
+  const prompts: string[] = [];
+  const answers = [...(options.answers ?? [])];
+  const secrets = [...(options.secrets ?? [])];
+  const nextScripted = (list: string[], question: string): string => {
+    prompts.push(question);
+    const next = list.shift();
+    if (next === undefined) {
+      throw new Error(`Unscripted prompt: ${question}`);
+    }
+    return next;
+  };
+  const deps: WizardDeps = {
+    io: {
+      ask: async (question) => nextScripted(answers, question),
+      askSecret: async (question) => nextScripted(secrets, question),
+      log: (line) => {
+        logs.push(line);
+      },
+    },
+    fetch:
+      options.fetch ??
+      (async () => {
+        throw new Error('Telegram must not be called in this test');
+      }),
+    fs,
+    env: options.env ?? {},
+    clock: options.clock ?? { now: () => Date.now() },
+    home: path.join(options.dir, 'home'),
+    startDir: path.join(options.dir, 'project'),
+    rootDir: repoRoot,
+    setupPath: path.join(options.dir, 'setup.md'),
+    nodeVersion: process.versions.node,
+    now: () => new Date('2026-10-10T12:00:00.000Z'),
+    checkCodex: async () => 'codex-cli test',
+    isGitIgnored: async () => true,
+    startRcc: async () => 0,
+  };
+  return { deps, logs, prompts };
+};
+
+const fileMode = (file: string): number => fs.statSync(file).mode & 0o777;
+
+test('bot token shape check accepts BotFather tokens and rejects other text', () => {
+  assert.equal(isBotTokenShape(FAKE_BOT_CREDENTIAL), true);
+  assert.equal(isBotTokenShape('replace_with_botfather_token'), false);
+  assert.equal(isBotTokenShape('123456789'), false);
+  assert.equal(isBotTokenShape('123456789:short'), false);
+  assert.equal(isBotTokenShape(`${FAKE_BOT_CREDENTIAL} `), false);
+});
+
+test('setup checks the Node version against the engines range', () => {
+  assert.equal(isNodeVersionSupported('22.22.2', '>=22.5.0'), true);
+  assert.equal(isNodeVersionSupported('22.5.0', '>=22.5.0'), true);
+  assert.equal(isNodeVersionSupported('23.0.0', '>=22.5.0'), true);
+  assert.equal(isNodeVersionSupported('22.4.1', '>=22.5.0'), false);
+  assert.equal(isNodeVersionSupported('20.11.0', '>=22.5.0'), false);
+});
+
+test('getMe reports the bot username and turns a rejected or unreachable token into a clear error', async () => {
+  const dir = makeWizardTempDir();
+
+  const accepted = makeWizardDeps({
+    dir,
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot', first_name: 'RCC' })),
+  });
+  const identity = await fetchBotIdentity(accepted.deps, FAKE_BOT_CREDENTIAL);
+  assert.equal(identity.username, 'rcc_test_bot');
+
+  const rejected = makeWizardDeps({ dir, fetch: telegramFetch(() => rejectedBody) });
+  await assert.rejects(fetchBotIdentity(rejected.deps, FAKE_BOT_CREDENTIAL), (error: unknown) => {
+    assert.ok(error instanceof WizardError);
+    assert.match(error.message, /Telegram rejected this token/);
+    assert.equal(error.message.includes(FAKE_BOT_CREDENTIAL), false);
+    return true;
+  });
+
+  // A network error can carry the request URL, and the URL holds the token. The wizard must not repeat it.
+  const offline = makeWizardDeps({
+    dir,
+    fetch: async (input) => {
+      throw new Error(`connect ECONNREFUSED ${String(input)}`);
+    },
+  });
+  await assert.rejects(fetchBotIdentity(offline.deps, FAKE_BOT_CREDENTIAL), (error: unknown) => {
+    assert.ok(error instanceof WizardError);
+    assert.match(error.message, /Could not reach Telegram/);
+    assert.equal(error.message.includes(FAKE_BOT_CREDENTIAL), false);
+    return true;
+  });
+});
+
+test('chat capture ignores group chats and accepts a private chat only after the user confirms it', async () => {
+  const dir = makeWizardTempDir();
+  let now = 0;
+  const batches: Array<Array<Record<string, unknown>>> = [
+    [{ update_id: 10, message: { chat: { id: -100123, type: 'supergroup' }, from: { first_name: 'Group' } } }],
+    [{ update_id: 11, message: { chat: { id: 555, type: 'private', first_name: 'Stranger' }, from: { first_name: 'Stranger' } } }],
+    [{ update_id: 12, message: { chat: { id: 123456789, type: 'private' }, from: { first_name: 'Om', username: 'om_test' } } }],
+  ];
+  const offsets: unknown[] = [];
+  const fetchImpl = telegramFetch((method, body) => {
+    if (method !== 'getUpdates') {
+      return rejectedBody;
+    }
+    offsets.push(body.offset);
+    now += 10_000;
+    return okBody(batches.shift() ?? []);
+  });
+
+  const { deps, logs } = makeWizardDeps({ dir, fetch: fetchImpl, clock: { now: () => now } });
+  const answers = ['n', 'y'];
+  const asked: ChatCandidate[] = [];
+  const chat = await captureOperatorChat(deps, FAKE_BOT_CREDENTIAL, async (candidate) => {
+    asked.push(candidate);
+    return answers.shift() === 'y';
+  });
+
+  assert.deepEqual(chat, { id: '123456789', type: 'private', firstName: 'Om', username: 'om_test' });
+  assert.deepEqual(asked.map((candidate) => candidate.id), ['555', '123456789']);
+  assert.ok(logs.some((line) => line.includes('Ignored a supergroup chat')));
+  assert.deepEqual(offsets, [undefined, 11, 12]);
+});
+
+test('chat capture gives up after the window when no private chat is confirmed', async () => {
+  const dir = makeWizardTempDir();
+  let now = 0;
+  let nextUpdateId = 1;
+  const fetchImpl = telegramFetch((method) => {
+    now += 10_000;
+    if (method !== 'getUpdates') {
+      return rejectedBody;
+    }
+    nextUpdateId += 1;
+    return okBody([{ update_id: nextUpdateId, message: { chat: { id: 777, type: 'private' }, from: { first_name: 'Maybe' } } }]);
+  });
+
+  const { deps } = makeWizardDeps({ dir, fetch: fetchImpl, clock: { now: () => now } });
+  let asked = 0;
+  const chat = await captureOperatorChat(deps, FAKE_BOT_CREDENTIAL, async () => {
+    asked += 1;
+    return false;
+  });
+
+  assert.equal(chat, undefined);
+  assert.equal(asked, 12);
+});
+
+test('setup writes setup.md with the keys run.sh reads, mode 0600, and run.sh parses it', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  const { deps, prompts } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+    answers: ['n'],
+  });
+
+  const code = await runWizard(['--chat-id', '123456789', '--project', project], deps);
+  assert.equal(code, 0);
+  assert.ok(prompts.some((question) => question.startsWith('Start RCC now')));
+
+  const lines = fs.readFileSync(deps.setupPath, 'utf8').split('\n');
+  assert.ok(lines.includes(`RCC_TELEGRAM_BOT_TOKEN=${FAKE_BOT_CREDENTIAL}`));
+  assert.ok(lines.includes('RCC_OPERATOR_CHAT_ID=123456789'));
+  assert.ok(lines.includes('RCC_ALLOWED_CHAT_IDS=123456789'));
+  assert.ok(lines.includes('RCC_TELEGRAM_TRANSPORT=long_polling'));
+  assert.ok(lines.includes(`RCC_PROJECT_ROOTS=${project}`));
+  assert.ok(lines.includes('RCC_RELAY_ENABLED=false'));
+  assert.equal(fileMode(deps.setupPath), 0o600);
+
+  // Read the file with the get_val function from run.sh, so the test follows the same parsing as the launcher.
+  const getValSource = fs.readFileSync(path.join(repoRoot, 'run.sh'), 'utf8').match(/^get_val\(\) \{\n[\s\S]*?\n\}\n/m)?.[0];
+  assert.ok(getValSource, 'run.sh must define get_val');
+  const readWithRunSh = (key: string): string =>
+    spawnSync('bash', ['-c', `${getValSource}\nget_val "$1"`, 'bash', key], { cwd: dir, encoding: 'utf8' }).stdout.trim();
+  assert.equal(readWithRunSh('RCC_TELEGRAM_BOT_TOKEN'), FAKE_BOT_CREDENTIAL);
+  assert.equal(readWithRunSh('RCC_OPERATOR_CHAT_ID'), '123456789');
+  assert.equal(readWithRunSh('RCC_TELEGRAM_TRANSPORT'), 'long_polling');
+  assert.equal(readWithRunSh('RCC_PROJECT_ROOTS'), project);
+});
+
+test('an existing setup.md is kept as a 0600 backup before it is replaced', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  fs.writeFileSync(path.join(dir, 'setup.md'), 'RCC_OPERATOR_CHAT_ID=111\n', { mode: 0o644 });
+  const { deps, prompts } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+    answers: ['y', 'n'],
+  });
+
+  const code = await runWizard(['--chat-id', '123456789', '--project', project], deps);
+  assert.equal(code, 0);
+  assert.ok(prompts.some((question) => question.startsWith('Replace it?')));
+
+  const backups = fs.readdirSync(dir).filter((name) => /^setup\.md\.bak-/.test(name));
+  assert.equal(backups.length, 1);
+  const backupPath = path.join(dir, backups[0] ?? '');
+  assert.equal(fs.readFileSync(backupPath, 'utf8'), 'RCC_OPERATOR_CHAT_ID=111\n');
+  assert.equal(fileMode(backupPath), 0o600);
+  assert.match(fs.readFileSync(deps.setupPath, 'utf8'), /^RCC_OPERATOR_CHAT_ID=123456789$/m);
+  assert.equal(fileMode(deps.setupPath), 0o600);
+});
+
+test('declining to replace setup.md leaves it unchanged and makes no backup', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  fs.writeFileSync(path.join(dir, 'setup.md'), 'RCC_OPERATOR_CHAT_ID=111\n');
+  const { deps, logs } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+    answers: ['n'],
+  });
+
+  assert.equal(await runWizard(['--chat-id', '123456789', '--project', project], deps), 0);
+  assert.equal(fs.readFileSync(deps.setupPath, 'utf8'), 'RCC_OPERATOR_CHAT_ID=111\n');
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.startsWith('setup.md.bak-')), []);
+  assert.ok(logs.includes('Left setup.md unchanged.'));
+});
+
+test('setup dry run writes nothing and never prints the bot token', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  const { deps, logs } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+  });
+
+  const code = await runWizard(['--dry-run', '--yes', '--chat-id', '123456789', '--project', project], deps);
+  assert.equal(code, 0);
+  assert.equal(fs.existsSync(deps.setupPath), false);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['project']);
+
+  const output = logs.join('\n');
+  assert.match(output, /^RCC_TELEGRAM_BOT_TOKEN=<hidden>$/m);
+  assert.equal(output.includes(FAKE_BOT_CREDENTIAL), false);
+});
+
+test('skip-telegram-check works only with dry run and never calls Telegram', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  const offline = makeWizardDeps({ dir, env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL } });
+
+  assert.equal(
+    await runWizard(['--dry-run', '--skip-telegram-check', '--yes', '--chat-id', '123456789', '--project', project], offline.deps),
+    0,
+  );
+  assert.equal(offline.logs.join('\n').includes(FAKE_BOT_CREDENTIAL), false);
+
+  const refused = makeWizardDeps({ dir });
+  assert.equal(await runWizard(['--skip-telegram-check', '--chat-id', '123456789'], refused.deps), 2);
+  assert.match(refused.logs.join('\n'), /only works with --dry-run/);
+});
+
+test('setup errors never include the bot token', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  const argv = ['--dry-run', '--yes', '--chat-id', '123456789', '--project', project];
+
+  const unreachable = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: async (input) => {
+      throw new Error(`request failed for ${String(input)}`);
+    },
+  });
+  assert.equal(await runWizard(argv, unreachable.deps), 1);
+  assert.match(unreachable.logs.join('\n'), /Could not reach Telegram/);
+  assert.equal(unreachable.logs.join('\n').includes(FAKE_BOT_CREDENTIAL), false);
+
+  const rejected = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => rejectedBody),
+  });
+  assert.equal(await runWizard(argv, rejected.deps), 1);
+  assert.match(rejected.logs.join('\n'), /Telegram rejected this token/);
+  assert.equal(rejected.logs.join('\n').includes(FAKE_BOT_CREDENTIAL), false);
+
+  // A token pasted as an argument is refused and not echoed back.
+  const byArgument = makeWizardDeps({ dir });
+  assert.equal(await runWizard([FAKE_BOT_CREDENTIAL], byArgument.deps), 2);
+  assert.equal(await runWizard(['--token', FAKE_BOT_CREDENTIAL], byArgument.deps), 2);
+  assert.equal(byArgument.logs.join('\n').includes(FAKE_BOT_CREDENTIAL), false);
+  assert.throws(() => parseArgs([FAKE_BOT_CREDENTIAL]), (error: unknown) => {
+    assert.ok(error instanceof WizardError);
+    assert.equal(error.message.includes(FAKE_BOT_CREDENTIAL), false);
+    return true;
+  });
+});
+
+test('interactive token prompt accepts a second try after a rejection and stops after three tries', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  let calls = 0;
+  const retry = makeWizardDeps({
+    dir,
+    secrets: [FAKE_BOT_CREDENTIAL_OTHER, FAKE_BOT_CREDENTIAL],
+    answers: ['n'],
+    fetch: telegramFetch(() => {
+      calls += 1;
+      return calls === 1 ? rejectedBody : okBody({ username: 'rcc_test_bot' });
+    }),
+  });
+  assert.equal(await runWizard(['--chat-id', '123456789', '--project', project], retry.deps), 0);
+  assert.equal(calls, 2);
+  assert.ok(fs.readFileSync(retry.deps.setupPath, 'utf8').includes(`RCC_TELEGRAM_BOT_TOKEN=${FAKE_BOT_CREDENTIAL}`));
+
+  const shapeOnly = makeWizardDeps({ dir: makeWizardTempDir(), secrets: ['nope', 'still nope', 'no'] });
+  assert.equal(await runWizard(['--chat-id', '123456789'], shapeOnly.deps), 1);
+  assert.match(shapeOnly.logs.join('\n'), /No valid bot token after 3 tries/);
+});
+
+test('install.sh passes the bash syntax check', () => {
+  const result = spawnSync('bash', ['-n', 'install.sh'], { cwd: repoRoot, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('install.sh stops without touching a folder that is not an RCC clone', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-install-test-'));
+  const installDir = path.join(dir, 'other');
+  fs.mkdirSync(installDir);
+  fs.writeFileSync(path.join(installDir, 'notes.txt'), 'keep me\n');
+
+  const result = spawnSync('bash', ['install.sh'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, RCC_DIR: installDir },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /is not a Remote Codex Control clone/);
+  assert.equal(fs.readFileSync(path.join(installDir, 'notes.txt'), 'utf8'), 'keep me\n');
+});
+
+test('setup renders the chat ID and hides the token only when asked', () => {
+  const values = { botToken: FAKE_BOT_CREDENTIAL, chatId: '123456789', projectRoots: ['/tmp/one', '/tmp/two'] };
+  const visible = renderSetupMd(values, { hideToken: false });
+  assert.ok(visible.includes(`RCC_TELEGRAM_BOT_TOKEN=${FAKE_BOT_CREDENTIAL}`));
+  assert.ok(visible.includes('RCC_PROJECT_ROOTS=/tmp/one,/tmp/two'));
+
+  const hidden = renderSetupMd(values, { hideToken: true });
+  assert.ok(hidden.includes('RCC_TELEGRAM_BOT_TOKEN=<hidden>'));
+  assert.equal(hidden.includes(FAKE_BOT_CREDENTIAL), false);
+});
+
+test('project folders can be added one at a time, and a missing folder is asked for again', async () => {
+  const dir = makeWizardTempDir();
+  const first = path.join(dir, 'project');
+  const second = path.join(dir, 'second');
+  fs.mkdirSync(second);
+  const { deps, prompts, logs } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+    // First folder: a typo, then the real one. Second folder: added. Then Enter to finish, then no start.
+    answers: [path.join(dir, 'typo'), first, second, '', 'n'],
+  });
+
+  assert.equal(await runWizard(['--chat-id', '123456789'], deps), 0);
+  assert.ok(logs.some((line) => line.startsWith('Folder not found:')));
+  assert.equal(prompts.filter((question) => question.startsWith('Add another project folder')).length, 2);
+  assert.match(fs.readFileSync(deps.setupPath, 'utf8'), new RegExp(`^RCC_PROJECT_ROOTS=${first},${second}$`, 'm'));
+});
+
+test('--yes uses the folder the wizard started in and needs a chat ID', async () => {
+  const dir = makeWizardTempDir();
+  const project = path.join(dir, 'project');
+  const { deps, prompts, logs } = makeWizardDeps({
+    dir,
+    env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL },
+    fetch: telegramFetch(() => okBody({ username: 'rcc_test_bot' })),
+  });
+
+  assert.equal(await runWizard(['--yes', '--chat-id', '123456789', '--dry-run'], deps), 0);
+  assert.deepEqual(prompts, []);
+  assert.match(logs.join('\n'), new RegExp(`^RCC_PROJECT_ROOTS=${project}$`, 'm'));
+
+  const noChat = makeWizardDeps({ dir, env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL } });
+  assert.equal(await runWizard(['--yes'], noChat.deps), 1);
+  assert.match(noChat.logs.join('\n'), /--yes needs --chat-id/);
 });
