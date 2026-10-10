@@ -770,7 +770,9 @@ export class CodexDesktopStateMonitor {
     if (toolName === 'apply_patch') {
       return 'filesystem';
     }
-    if (typeof args.branch === 'string' && args.branch === 'main') {
+    // A branch name alone does not show a push. Require a push command or a push action.
+    const command = typeof args.cmd === 'string' ? args.cmd : typeof args.command === 'string' ? args.command : '';
+    if (/\bgit\s+push\b/.test(command) || args.action === 'push') {
       return 'git_push';
     }
     return undefined;

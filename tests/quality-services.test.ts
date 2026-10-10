@@ -185,3 +185,20 @@ test('approval risk label uses the shared classifier levels', () => {
     assert.equal(telegramCommandService.approvalRiskLabel(approvalSample(actionType, summary)), risk, summary);
   }
 });
+
+type ActionInferrer = { inferActionType(toolName: string | undefined, args: Record<string, unknown>): string | undefined };
+
+test('desktop monitor labels a tool call as a push only when it carries a push', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-action-type-'));
+  const monitor = makeUnstartedDaemon(baseDir).desktopStateMonitor as unknown as ActionInferrer;
+
+  // A branch name, or main in a read-only command, is not a push.
+  assert.equal(monitor.inferActionType('update_plan', { branch: 'main' }), undefined);
+  assert.equal(monitor.inferActionType('mcp_tool', { branch: 'main', action: 'commit' }), undefined);
+  assert.equal(monitor.inferActionType('mcp_tool', { cmd: 'git log main --oneline' }), undefined);
+
+  // A real push is still a push, from a command or from a push action.
+  assert.equal(monitor.inferActionType('mcp_tool', { cmd: 'git push origin main' }), 'git_push');
+  assert.equal(monitor.inferActionType('mcp_tool', { command: 'git push' }), 'git_push');
+  assert.equal(monitor.inferActionType('mcp_tool', { action: 'push', branch: 'main' }), 'git_push');
+});
