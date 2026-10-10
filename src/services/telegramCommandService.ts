@@ -16,6 +16,7 @@ import type { SessionRegistryAgent } from '../agents/sessionRegistryAgent.js';
 import type { CodexDesktopStateMonitor } from './codexDesktopStateMonitor.js';
 import type { SteeringAgent } from '../agents/steeringAgent.js';
 
+import { buildApprovalDetails, type ApprovalRisk } from './approvalDetails.js';
 import { CodexSessionService } from './codexSessionService.js';
 // Telegram rejects messages longer than 4096 characters, so text is split below that limit.
 const TELEGRAM_TEXT_LIMIT = 3900;
@@ -1310,18 +1311,9 @@ export class TelegramCommandService {
         }
         return `expires in ${this.formatAge(delta)}`;
     }
-    approvalRiskLabel(approval: ApprovalRecord): 'low' | 'medium' | 'high' | 'unknown' {
-        const text = `${approval.actionType} ${approval.summary}`.toLowerCase();
-        if (/rm\s+-rf|sudo|chmod|chown|git\s+push|git\s+reset|checkout\s+--|delete|erase|curl|wget|ssh|scp|token|secret|\.env/.test(text)) {
-            return 'high';
-        }
-        if (/git|write|edit|patch|apply|install|network|npm|pip|brew|mv|cp/.test(text)) {
-            return 'medium';
-        }
-        if (/status|ls|pwd|cat|grep|rg|sed/.test(text)) {
-            return 'low';
-        }
-        return 'unknown';
+    approvalRiskLabel(approval: ApprovalRecord): ApprovalRisk {
+        // Same classifier as the approval detail view, so both show one risk level.
+        return buildApprovalDetails(approval).risk;
     }
     helpText(): string {
         return [

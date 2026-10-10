@@ -9,6 +9,8 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import { Logger } from '../src/logger.js';
+import type { ApprovalRecord } from '../src/db/repositories.js';
+import { buildApprovalDetails, formatApprovalDetailsForTelegram } from '../src/services/approvalDetails.js';
 import { RccDaemon } from '../src/services/rccDaemon.js';
 
 const makeConfig = (baseDir: string): RccConfig => ({
@@ -124,4 +126,62 @@ test('single-instance lock creates the lock file when none exists', () => {
   acquireLock(daemon);
 
   assert.equal(readLockPid(baseDir), process.pid);
+});
+
+const approvalSample = (actionType: string, summary: string): ApprovalRecord => ({
+  id: 'approval-sample',
+  threadId: 'thread-sample',
+  codexRequestId: 'app-sample',
+  actionType,
+  summary,
+  status: 'pending',
+  createdAt: new Date().toISOString(),
+});
+
+const RISK_SAMPLES: Array<[actionType: string, summary: string]> = [
+  ['command', 'Run command: git status'],
+  ['command', 'Run command: git commit -m "wip"'],
+  ['command', 'Run command: git push origin main'],
+  ['command', 'Run command: git reset --hard HEAD'],
+  ['command', 'Run command: sudo ls /var'],
+  ['command', 'Run command: rm -rf build'],
+  ['command', 'Run command: cat .env'],
+  ['command', 'Run command: curl https://example.com'],
+  ['command', 'Run command: npm install left-pad'],
+  ['command', 'Run command: npm test'],
+  ['command', 'Run command: node scripts/x.js'],
+  ['command', 'Run command: ls -la'],
+  ['filesystem', 'Apply patch requiring approval'],
+  ['git_push', 'Push to origin main'],
+  ['permissions', 'Permission: network access'],
+  ['other', 'Tool execution requiring approval'],
+];
+
+test('approval risk label in the list matches the risk in the approval detail view', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-risk-agree-'));
+  const { telegramCommandService } = makeUnstartedDaemon(baseDir);
+
+  for (const [actionType, summary] of RISK_SAMPLES) {
+    const approval = approvalSample(actionType, summary);
+    const detailRisk = formatApprovalDetailsForTelegram(buildApprovalDetails(approval)).match(/^Risk: (\S+)$/m)?.[1];
+    assert.equal(telegramCommandService.approvalRiskLabel(approval), detailRisk, summary);
+  }
+});
+
+test('approval risk label uses the shared classifier levels', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rcc-risk-table-'));
+  const { telegramCommandService } = makeUnstartedDaemon(baseDir);
+  const expected: Array<[string, string, string]> = [
+    ['command', 'Run command: git push origin main', 'critical'],
+    ['git_push', 'Push to origin main', 'critical'],
+    ['command', 'Run command: git commit -m "wip"', 'high'],
+    ['command', 'Run command: git status', 'low'],
+    ['command', 'Run command: cat .env', 'low'],
+    ['command', 'Run command: npm test', 'medium'],
+    ['command', 'Run command: rm -rf build', 'high'],
+  ];
+
+  for (const [actionType, summary, risk] of expected) {
+    assert.equal(telegramCommandService.approvalRiskLabel(approvalSample(actionType, summary)), risk, summary);
+  }
 });
