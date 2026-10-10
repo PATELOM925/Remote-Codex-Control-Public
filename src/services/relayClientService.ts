@@ -1,4 +1,4 @@
-import type { RccConfig } from '../config.js';
+import { isAllowedRelayBaseUrl, type RccConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { ApprovalRouterAgent } from '../agents/approvalRouterAgent.js';
 import type { CodexBridgeAgent } from '../agents/codexBridgeAgent.js';
@@ -46,6 +46,12 @@ export class RelayClientService {
 
   start(): void {
     if (!this.config.relayEnabled) {
+      return;
+    }
+    if (!isAllowedRelayBaseUrl(this.config.relayBaseUrl)) {
+      this.logger.warn('relay-disabled', {
+        reason: 'RCC_RELAY_BASE_URL is missing or not https',
+      });
       return;
     }
     this.stopped = false;

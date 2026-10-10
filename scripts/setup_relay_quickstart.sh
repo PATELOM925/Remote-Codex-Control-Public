@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-BASE_URL="${RCC_RELAY_BASE_URL:-https://rcc-magnus-alpha.vercel.app}"
+BASE_URL="${RCC_RELAY_BASE_URL:-}"
 MAC_ID="${RCC_RELAY_MAC_ID:-$(hostname -s 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-' || true)}"
 MAC_ID="${MAC_ID:-macbook-air}"
 CONFIGURE_VERCEL=false
@@ -26,7 +26,7 @@ Options:
   --configure-vercel  Also set Vercel production env for RCC_RELAY_OPERATOR_TOKEN,
                       RCC_RELAY_MAC_TOKEN, and RCC_RELAY_ALLOWED_ORIGINS.
   --deploy            After --configure-vercel, deploy production with `vercel --prod --yes`.
-  --base-url URL      Relay URL. Default: https://rcc-magnus-alpha.vercel.app
+  --base-url URL      Your relay URL. Required, must start with https://. No default.
   --mac-id ID         Stable local Mac id. Default: hostname slug.
 
 Notes:
@@ -64,6 +64,15 @@ done
 
 if [[ "$DEPLOY_VERCEL" == true && "$CONFIGURE_VERCEL" != true ]]; then
   echo "--deploy requires --configure-vercel." >&2
+  exit 1
+fi
+
+if [[ -z "$BASE_URL" ]]; then
+  echo "Missing relay URL. Set RCC_RELAY_BASE_URL or pass --base-url https://your-relay.example.com" >&2
+  exit 1
+fi
+if [[ "$BASE_URL" != https://* ]]; then
+  echo "The relay URL must start with https://. Set RCC_RELAY_BASE_URL or pass --base-url with an https URL." >&2
   exit 1
 fi
 

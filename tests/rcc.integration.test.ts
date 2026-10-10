@@ -30,7 +30,7 @@ import {
   isTooBroad,
 } from '../scripts/setup-wizard.js';
 import { redactSensitiveText } from '../src/utils/redaction.js';
-import { loadConfig, type RccConfig } from '../src/config.js';
+import { isAllowedRelayBaseUrl, loadConfig, type RccConfig } from '../src/config.js';
 import {
   AppleScriptApprovalAutomationService,
   type UiApprovalAutomationService,
@@ -492,7 +492,7 @@ test('web control API signs in with RCC token and mirrors Telegram actions safel
       localStatusPort: 0,
       webControlEnabled: true,
       webAuthToken: webToken,
-      webAllowedOrigins: ['https://rcc-magnus-alpha.vercel.app'],
+      webAllowedOrigins: ['https://relay.example.com'],
     },
   });
   try {
@@ -521,10 +521,10 @@ test('web control API signs in with RCC token and mirrors Telegram actions safel
 
     const preflight = await fetch(`${url}/api/threads/${encodeURIComponent(created.threadId)}/run`, {
       method: 'OPTIONS',
-      headers: { origin: 'https://rcc-magnus-alpha.vercel.app' },
+      headers: { origin: 'https://relay.example.com' },
     });
     assert.equal(preflight.status, 204);
-    assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://rcc-magnus-alpha.vercel.app');
+    assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://relay.example.com');
 
     const sessionLogin = await fetch(`${url}/api/session/login`, {
       method: 'POST',
@@ -4206,4 +4206,63 @@ test('web demo build writes every expected file with a strict header file and no
 test('the hosted console index does not load the web demo files', () => {
   const html = fs.readFileSync(path.join(webDemoRoot, 'apps/web/index.html'), 'utf8');
   assert.doesNotMatch(html, /demo-config|demo-relay/);
+});
+
+test('relay base URL has no default and only https or loopback URLs are allowed', () => {
+  const previous = process.env.RCC_RELAY_BASE_URL;
+  delete process.env.RCC_RELAY_BASE_URL;
+  try {
+    assert.equal(loadConfig().relayBaseUrl, '');
+  } finally {
+    if (previous === undefined) {
+      delete process.env.RCC_RELAY_BASE_URL;
+    } else {
+      process.env.RCC_RELAY_BASE_URL = previous;
+    }
+  }
+  assert.equal(isAllowedRelayBaseUrl('https://relay.example.com'), true);
+  assert.equal(isAllowedRelayBaseUrl('https://relay.example.com/'), true);
+  assert.equal(isAllowedRelayBaseUrl('http://127.0.0.1:4865'), true);
+  assert.equal(isAllowedRelayBaseUrl('http://localhost'), true);
+  assert.equal(isAllowedRelayBaseUrl('http://relay.example.com'), false);
+  assert.equal(isAllowedRelayBaseUrl('https://'), false);
+  assert.equal(isAllowedRelayBaseUrl(''), false);
+});
+
+test('relay client stays off and logs one line when the base URL is missing or not https', async () => {
+  const { daemon } = await createDaemon();
+  const written: string[] = [];
+  const originalWrite = process.stdout.write;
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    written.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    for (const relayBaseUrl of ['', 'http://relay.example.com']) {
+      written.length = 0;
+      const relayClient = new RelayClientService(
+        {
+          ...daemon.config,
+          relayEnabled: true,
+          relayBaseUrl,
+          relayMacToken: 'm'.repeat(40),
+        },
+        daemon.localStatusServer,
+        daemon.codexBridge,
+        daemon.steeringAgent,
+        daemon.approvalRouter,
+        daemon.fileIntakeAgent,
+        daemon.repository,
+        new Logger('warn'),
+      );
+      relayClient.start();
+      relayClient.stop();
+      const lines = written.filter((line) => line.includes('relay-disabled'));
+      assert.equal(lines.length, 1);
+      assert.match(lines[0] ?? '', /RCC_RELAY_BASE_URL is missing or not https/);
+    }
+  } finally {
+    process.stdout.write = originalWrite;
+    daemon.stop();
+  }
 });

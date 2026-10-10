@@ -62,6 +62,10 @@ const detectCodexCli = (): string | undefined => {
   return undefined;
 };
 
+const RELAY_BASE_URL_RE = /^(https:\/\/[^/\s]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)(\/\S*)?$/;
+
+export const isAllowedRelayBaseUrl = (value: string): boolean => RELAY_BASE_URL_RE.test(value);
+
 const parseCsv = (raw: string | undefined): string[] =>
   (raw ?? '')
     .split(',')
@@ -110,7 +114,7 @@ export const loadConfig = (): RccConfig => {
     webAuthToken: process.env.RCC_WEB_AUTH_TOKEN,
     webAllowedOrigins: parseCsv(process.env.RCC_WEB_ALLOWED_ORIGINS),
     relayEnabled: (process.env.RCC_RELAY_ENABLED ?? 'false').toLowerCase() === 'true',
-    relayBaseUrl: process.env.RCC_RELAY_BASE_URL ?? 'https://rcc-magnus-alpha.vercel.app',
+    relayBaseUrl: process.env.RCC_RELAY_BASE_URL ?? '',
     relayMacId: process.env.RCC_RELAY_MAC_ID ?? 'default-mac',
     relayMacToken: process.env.RCC_RELAY_MAC_TOKEN,
     relayPollIntervalMs: Number(process.env.RCC_RELAY_POLL_INTERVAL_MS ?? 15_000),

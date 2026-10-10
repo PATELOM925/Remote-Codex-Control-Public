@@ -28,7 +28,7 @@ This helper only applies an existing local file like:
 
 If you are setting this up manually, add these lines to setup.md:
   RCC_RELAY_ENABLED=true
-  RCC_RELAY_BASE_URL=https://rcc-magnus-alpha.vercel.app
+  RCC_RELAY_BASE_URL=https://<your-relay-url>
   RCC_RELAY_MAC_ID=macbook-air
   RCC_RELAY_MAC_TOKEN=<private-mac-relay-token>
   RCC_RELAY_POLL_INTERVAL_MS=15000
@@ -86,6 +86,12 @@ awk '
 
 if ! grep -q '^RCC_RELAY_MAC_TOKEN=' "$VALUES_FILE"; then
   echo "Relay handoff did not include a Mac setup block with RCC_RELAY_MAC_TOKEN." >&2
+  exit 1
+fi
+
+if ! grep -q '^RCC_RELAY_BASE_URL=https://' "$VALUES_FILE"; then
+  rm -f "$VALUES_FILE"
+  echo "Relay handoff must set RCC_RELAY_BASE_URL to an https:// URL. setup.md was not changed." >&2
   exit 1
 fi
 

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
-const DEFAULT_WEB_URL = 'https://rcc-magnus-alpha.vercel.app';
 const DEFAULT_LOCAL_URL = 'http://127.0.0.1:4765';
+const RELAY_URL_RE = /^(https:\/\/[^/\s]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)(\/\S*)?$/;
 const TIMEOUT_MS = Number(process.env.RCC_SMOKE_TIMEOUT_MS ?? 8000);
 const strict = (process.env.RCC_SMOKE_STRICT ?? 'false').toLowerCase() === 'true';
 
 const results = [];
 const env = {
   relayEnabled: (process.env.RCC_RELAY_ENABLED ?? 'false').toLowerCase() === 'true',
-  webUrl: stripTrailingSlash(process.env.RCC_SMOKE_WEB_URL || process.env.RCC_RELAY_BASE_URL || DEFAULT_WEB_URL),
-  relayBaseUrl: stripTrailingSlash(process.env.RCC_SMOKE_RELAY_BASE_URL || process.env.RCC_RELAY_BASE_URL || DEFAULT_WEB_URL),
+  webUrl: stripTrailingSlash(process.env.RCC_SMOKE_WEB_URL || process.env.RCC_RELAY_BASE_URL),
+  relayBaseUrl: stripTrailingSlash(process.env.RCC_SMOKE_RELAY_BASE_URL || process.env.RCC_RELAY_BASE_URL),
   relayToken: process.env.RCC_RELAY_OPERATOR_TOKEN || '',
   localUrl: stripTrailingSlash(process.env.RCC_SMOKE_LOCAL_URL || DEFAULT_LOCAL_URL),
   telegramToken: process.env.RCC_TELEGRAM_BOT_TOKEN || '',
@@ -119,6 +119,11 @@ async function checkTelegram() {
   });
   const sendBody = await send.json().catch(() => ({}));
   record('telegram operator message', send.ok && sendBody.ok === true, send.ok ? 'test message sent' : `sendMessage returned ${send.status}`);
+}
+
+if (env.relayEnabled && (!RELAY_URL_RE.test(env.webUrl) || !RELAY_URL_RE.test(env.relayBaseUrl))) {
+  console.error('[smoke:FAIL] Set RCC_RELAY_BASE_URL to your relay URL. It must start with https:// (or use RCC_SMOKE_* URLs).');
+  process.exit(1);
 }
 
 for (const check of [checkHostedWeb, checkRelay, checkLocalDaemon, checkTelegram]) {

@@ -96,7 +96,7 @@ const demoHtml = (html) => {
   if (/id="(localToken|relayToken|localBaseUrl|relayBaseUrl)"/.test(out)) {
     throw new Error('build-web-demo: token or base URL fields are still in the demo HTML');
   }
-  if (/rcc-magnus-alpha|vercel\.app/.test(out)) {
+  if (/vercel\.app/.test(out)) {
     throw new Error('build-web-demo: hosted relay hostname is still in the demo HTML');
   }
   return out;
