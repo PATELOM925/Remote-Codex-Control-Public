@@ -9,7 +9,7 @@ Coding agents stop and ask before they run commands or change files. If the pers
 ## At a glance
 
 - About 18,900 lines of TypeScript in 53 files. 13,761 lines are in `src/`. 4,209 lines are in one integration test file.
-- 109 test cases. All pass on macOS with Node 22.
+- 120 test cases. All pass on macOS with Node 22.
 - 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
 - 21 commands registered with the Telegram bot menu at startup.
 - 5 policy checks: project allowlist, branch push, model switch, attachment path, and artifact send.
@@ -172,7 +172,7 @@ The real flow needs two more things:
 
 ## Tests
 
-`npm test` runs the 109 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
+`npm test` runs the 120 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
 
 - Unknown chats are rejected (line 1202).
 - A git push to `main` is blocked (line 1050).
@@ -219,7 +219,7 @@ Solo project: design, implementation, security model and tests.
 - Telegram is the supported interface. The web console and the hosted relay are experimental and are not part of the setup path.
 - The web console has a public demo mode with simulated data. It does not connect to any computer. Build it with `npm run web:demo:build`; see `apps/web/README.md`.
 - The demo is a static site with no backend. Its Cloudflare config is in `deploy/web-demo`, and deploying it is a manual step.
-- The hosted relay is single-operator. Do not share its URL or operator token with other people.
+- The hosted relay is single-operator and off by default. It needs an explicit `https://` URL in `RCC_RELAY_BASE_URL`. Do not share its URL or operator token with other people.
 - Desktop UI approval automation is a prototype and is off by default.
 - No multi-user access, no cloud execution, and no CI workflow.
 - Node 22 prints an `ExperimentalWarning` for `node:sqlite`.
