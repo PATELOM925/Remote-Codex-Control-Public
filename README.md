@@ -9,7 +9,7 @@ Coding agents stop and ask before they run commands or change files. If the pers
 ## At a glance
 
 - About 17,400 lines of TypeScript in 51 files. 13,663 lines are in `src/`. 3,548 lines are in one integration test file.
-- 99 test cases. All 99 pass on macOS with Node 22.
+- 100 test cases. All 100 pass on macOS with Node 22.
 - 12 SQLite tables, created by the migrations in `src/db/migrations.ts`. The database runs in WAL mode.
 - 21 commands registered with the Telegram bot menu at startup.
 - 5 policy checks: project allowlist, branch push, model switch, attachment path, and artifact send.
@@ -172,7 +172,7 @@ The real flow needs two more things:
 
 ## Tests
 
-`npm test` runs the 99 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
+`npm test` runs the 100 test cases in `tests/rcc.integration.test.ts`. The run takes about 10 to 20 seconds. Examples of what they cover:
 
 - Unknown chats are rejected (line 1202).
 - A git push to `main` is blocked (line 1050).
