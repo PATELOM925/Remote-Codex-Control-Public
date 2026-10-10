@@ -1,5 +1,7 @@
 # Remote Codex Control (RCC)
 
+[![CI](https://github.com/PATELOM925/Remote-Codex-Control-Public/actions/workflows/ci.yml/badge.svg)](https://github.com/PATELOM925/Remote-Codex-Control-Public/actions/workflows/ci.yml)
+
 RCC is a Telegram bot and a local daemon. It lets one operator watch, steer, and approve the actions of Codex coding agents that run on their own Mac.
 
 ## Why it matters
@@ -184,7 +186,7 @@ The real flow needs two more things:
 - The local status server refuses a non-local bind address (line 1030).
 - The setup wizard accepts only a confirmed private chat, keeps the old `setup.md` as a backup, and never prints the bot token.
 
-There is no CI workflow in this repo. The tests run only when you run them.
+A GitHub Actions workflow runs the typecheck, the tests, the secret scan and the web demo build on every push to `main` and on pull requests.
 
 ## Security model
 
@@ -222,7 +224,7 @@ Solo project: design, implementation, security model and tests.
 - The demo is a static site with no backend. Its Cloudflare config is in `deploy/web-demo`, and deploying it is a manual step.
 - The hosted relay is single-operator and off by default. It needs an explicit `https://` URL in `RCC_RELAY_BASE_URL`. A loopback `http://` URL is allowed for local tests. Do not share its URL or operator token with other people.
 - Desktop UI approval automation is a prototype and is off by default.
-- No multi-user access, no cloud execution, and no CI workflow.
+- No multi-user access and no cloud execution.
 - Node 22 prints an `ExperimentalWarning` for `node:sqlite`.
 - The bot shows only reasoning summaries that the App Server exposes. It does not show hidden reasoning.
 
