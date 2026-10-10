@@ -4359,9 +4359,9 @@ const callRelayApi = async (
   return { status: response.statusCode, text: response.text, json: response.text ? JSON.parse(response.text) : undefined };
 };
 
-const OPERATOR_TOKEN = 'o'.repeat(40);
-const MAC_TOKEN = 'm'.repeat(40);
-const RELAY_API_TOKENS = { RCC_RELAY_OPERATOR_TOKEN: OPERATOR_TOKEN, RCC_RELAY_MAC_TOKEN: MAC_TOKEN };
+const operatorToken = 'o'.repeat(40);
+const macToken = 'm'.repeat(40);
+const RELAY_API_TOKENS = { RCC_RELAY_OPERATOR_TOKEN: operatorToken, RCC_RELAY_MAC_TOKEN: macToken };
 
 test('relay API returns 401 for a missing or wrong token', async () => {
   const handler = await loadRelayApi();
@@ -4376,7 +4376,7 @@ test('relay API returns 401 for a missing or wrong token', async () => {
     const shorter = await callRelayApi(handler, { url: '/api/relay/status', token: 'w'.repeat(12) });
     assert.equal(shorter.status, 401);
 
-    const macTokenOnOperatorRoute = await callRelayApi(handler, { url: '/api/relay/status', token: MAC_TOKEN });
+    const macTokenOnOperatorRoute = await callRelayApi(handler, { url: '/api/relay/status', token: macToken });
     assert.equal(macTokenOnOperatorRoute.status, 401);
   });
 });
@@ -4389,7 +4389,7 @@ test('relay API returns 503 when a token is unset or shorter than 32 characters'
     assert.equal(weak.json.error, 'relay_not_configured');
   });
   await withRelayApiEnv({}, async () => {
-    const unset = await callRelayApi(handler, { url: '/api/relay/status', token: OPERATOR_TOKEN });
+    const unset = await callRelayApi(handler, { url: '/api/relay/status', token: operatorToken });
     assert.equal(unset.status, 503);
     assert.equal(unset.json.error, 'relay_not_configured');
   });
@@ -4401,7 +4401,7 @@ test('relay API returns 413 for a request body over 1 MB before reading it all',
     const oversize = await callRelayApi(handler, {
       method: 'POST',
       url: '/api/relay/commands',
-      token: OPERATOR_TOKEN,
+      token: operatorToken,
       rawBody: Buffer.alloc(1024 * 1024 + 1, 0x61),
     });
     assert.equal(oversize.status, 413);
@@ -4415,7 +4415,7 @@ test('relay API limits command messages to 64 KB except file uploads', async () 
     const tooLong = await callRelayApi(handler, {
       method: 'POST',
       url: '/api/relay/commands',
-      token: OPERATOR_TOKEN,
+      token: operatorToken,
       body: { action: 'say', targetKind: 'thread', targetId: 'thread-limit-1', message: 'm'.repeat(64 * 1024 + 1) },
     });
     assert.equal(tooLong.status, 413);
@@ -4424,7 +4424,7 @@ test('relay API limits command messages to 64 KB except file uploads', async () 
     const upload = await callRelayApi(handler, {
       method: 'POST',
       url: '/api/relay/commands',
-      token: OPERATOR_TOKEN,
+      token: operatorToken,
       body: { action: 'attach_file', targetKind: 'thread', targetId: 'thread-limit-1', message: 'u'.repeat(100 * 1024) },
     });
     assert.equal(upload.status, 202);
@@ -4437,7 +4437,7 @@ test('relay API lets an operator queue a command and a valid Mac poll receive it
     const queued = await callRelayApi(handler, {
       method: 'POST',
       url: '/api/relay/commands',
-      token: OPERATOR_TOKEN,
+      token: operatorToken,
       body: {
         action: 'say',
         targetKind: 'thread',
@@ -4451,13 +4451,13 @@ test('relay API lets an operator queue a command and a valid Mac poll receive it
 
     const operatorPoll = await callRelayApi(handler, {
       url: '/api/relay/commands/poll?macId=test-mac',
-      token: OPERATOR_TOKEN,
+      token: operatorToken,
     });
     assert.equal(operatorPoll.status, 401);
 
     const poll = await callRelayApi(handler, {
       url: '/api/relay/commands/poll?macId=test-mac',
-      token: MAC_TOKEN,
+      token: macToken,
     });
     assert.equal(poll.status, 200);
     const delivered = poll.json.commands.find((command: { id: string }) => command.id === 'handler-test-say-1');
