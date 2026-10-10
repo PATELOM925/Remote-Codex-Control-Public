@@ -54,7 +54,7 @@ else
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
-(cd "$INSTALL_DIR" && npm ci)
+(cd "$INSTALL_DIR" && npm ci --no-audit --no-fund)
 
 # Run the wizard from the folder the user started in, so its default project folder is that folder.
 # --prefix points npm at the install. The wizard stays attached to the terminal.

@@ -306,8 +306,15 @@ export const resolveProjectFolder = (input: string, deps: WizardDeps): string =>
   if (!deps.fs.statSync(resolved).isDirectory()) {
     throw new WizardError(`Not a folder: ${shown}`);
   }
+  if (isTooBroad(resolved, deps.home)) {
+    throw new WizardError(`${shown} is too broad. Choose one project folder, not your home folder or the disk root.`);
+  }
   return resolved;
 };
+
+// The agent may write anywhere under a project folder, so the home folder and the disk root are refused.
+export const isTooBroad = (folder: string, home: string): boolean =>
+  folder === path.parse(folder).root || path.resolve(folder) === path.resolve(home);
 
 export const renderSetupMd = (values: SetupValues, options: { hideToken: boolean }): string =>
   [
@@ -420,11 +427,19 @@ const promptForProjects = async (opts: ParsedArgs, deps: WizardDeps): Promise<st
   const folders: string[] = [];
   for (;;) {
     const first = folders.length === 0;
-    const prompt = first
-      ? `Project folder [${displayPath(deps.startDir, deps.home)}]: `
-      : 'Add another project folder, or press Enter to finish: ';
+    // Offer the start folder as the default only when it is a sensible project folder.
+    const fallback = first && !isTooBroad(deps.startDir, deps.home) ? deps.startDir : '';
+    const prompt = !first
+      ? 'Add another project folder, or press Enter to finish: '
+      : fallback
+        ? `Project folder [${displayPath(fallback, deps.home)}]: `
+        : 'Project folder (for example ~/code/my-app): ';
     const typed = (await deps.io.ask(prompt)).trim();
-    const input = typed === '' && first ? deps.startDir : typed;
+    const input = typed === '' && first ? fallback : typed;
+    if (input === '' && first) {
+      deps.io.log('Enter a folder path.');
+      continue;
+    }
     if (input === '') {
       break;
     }

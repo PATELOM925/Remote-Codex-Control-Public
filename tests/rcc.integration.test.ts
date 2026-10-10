@@ -27,6 +27,7 @@ import {
   WizardError,
   type ChatCandidate,
   type WizardDeps,
+  isTooBroad,
 } from '../scripts/setup-wizard.js';
 import { redactSensitiveText } from '../src/utils/redaction.js';
 import { loadConfig, type RccConfig } from '../src/config.js';
@@ -4023,4 +4024,11 @@ test('--yes uses the folder the wizard started in and needs a chat ID', async ()
   const noChat = makeWizardDeps({ dir, env: { RCC_SETUP_BOT_TOKEN: FAKE_BOT_CREDENTIAL } });
   assert.equal(await runWizard(['--yes'], noChat.deps), 1);
   assert.match(noChat.logs.join('\n'), /--yes needs --chat-id/);
+});
+
+test('setup wizard refuses the home folder and the disk root as a project folder', () => {
+  assert.equal(isTooBroad('/', '/Users/demo'), true);
+  assert.equal(isTooBroad('/Users/demo', '/Users/demo'), true);
+  assert.equal(isTooBroad('/Users/demo/', '/Users/demo'), true);
+  assert.equal(isTooBroad('/Users/demo/code/app', '/Users/demo'), false);
 });
