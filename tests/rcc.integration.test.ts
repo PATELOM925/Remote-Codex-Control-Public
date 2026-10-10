@@ -4266,3 +4266,30 @@ test('relay client stays off and logs one line when the base URL is missing or n
     daemon.stop();
   }
 });
+
+test('relay snapshot redacts token-like assignments in approval summaries', async () => {
+  const { daemon, appServerClient, project } = await createDaemon();
+  try {
+    const created = await daemon.codexBridge.createThread({
+      projectId: project.id,
+      cwd: project.rootPath,
+      threadName: 'Redacted Summary Thread',
+    });
+    const fakeToken = 'x'.repeat(40);
+    appServerClient.emitApprovalRequest({
+      requestId: 'req-redacted-summary',
+      codexThreadId: created.codexThreadId,
+      turnId: 'turn-redacted-summary',
+      actionType: 'command',
+      summary: `RCC_TEST_TOKEN=${fakeToken} npm test`,
+      scope: 'once',
+    });
+    await waitForAsyncHandlers();
+
+    const snapshot = JSON.stringify(daemon.localStatusServer.snapshot());
+    assert.equal(snapshot.includes(fakeToken), false);
+    assert.match(snapshot, /RCC_TEST_TOKEN=<redacted> npm test/);
+  } finally {
+    daemon.stop();
+  }
+});

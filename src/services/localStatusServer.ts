@@ -11,7 +11,7 @@ import type { Logger } from '../logger.js';
 import type { RccEventBus } from '../runtime/eventBus.js';
 import type { CodexSkillRef, CodexThread, CodexThreadMode } from '../contracts/codex.js';
 import type { ApprovalStatus, ReasoningEffort, ThreadStatus } from '../contracts/states.js';
-import { buildApprovalDetails } from './approvalDetails.js';
+import { buildApprovalDetails, redactApprovalText } from './approvalDetails.js';
 
 import type { HealthOpsAgent } from '../agents/healthOpsAgent.js';
 import type { SessionRegistryAgent } from '../agents/sessionRegistryAgent.js';
@@ -749,7 +749,7 @@ export class LocalStatusServer {
         threadName: thread?.threadName ?? thread?.codexThreadId ?? approval.threadId,
         turnId: approval.turnId,
         actionType: approval.actionType,
-        summary: this.truncate(approval.summary, 180),
+        summary: this.truncate(redactApprovalText(approval.summary), 180),
         category: details.category,
         risk: details.risk,
         why: details.why,
