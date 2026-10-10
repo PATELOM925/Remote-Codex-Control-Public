@@ -61,6 +61,16 @@ const GIT_READONLY_RE = /^\s*git\s+(status|diff|show|log|branch\s+(?:--show-curr
 const NETWORK_RE = /\b(curl|wget|ssh|scp|rsync|vercel\s+(?:deploy|env|link|pull|push)|gh\s+(?:api|pr|repo|release)|npm\s+(?:install|i|add)|pnpm\s+(?:install|add)|yarn\s+(?:install|add)|bun\s+add|pip\s+install|brew\s+install)\b/i;
 const READONLY_SEGMENT_RE = /^\s*(?:sed|cat|rg|grep|ls|find|pwd|wc|head|tail|nl|printf|echo|git\s+(?:status|diff|show|log|branch\s+(?:--show-current|-vv)|rev-parse|ls-files))\b/i;
 
+// Words that mark an approval as at least high risk, whatever category the classifier picks.
+const HIGH_RISK_FLOOR_RE =
+  /rm\s+-rf|\bsudo\b|\bchmod\b|\bchown\b|git\s+push|git\s+reset|git\s+clean|checkout\s+--|\bdelete\b|\berase\b|\bcurl\b|\bwget\b|\bssh\b|\bscp\b|token|secret|\.env\b/i;
+
+const RISK_RANK: Record<ApprovalRisk, number> = { low: 0, unknown: 1, medium: 2, high: 3, critical: 4 };
+
+/** Raises a risk to high when the text names a sensitive action. A risk is never lowered. */
+export const applyRiskFloor = (risk: ApprovalRisk, text: string): ApprovalRisk =>
+  HIGH_RISK_FLOOR_RE.test(text) && RISK_RANK[risk] < RISK_RANK.high ? 'high' : risk;
+
 export const approvalRequestSource = (codexRequestId: string): ApprovalRequestSource => {
   if (codexRequestId.startsWith('desktop:')) return 'desktop_log_recovered';
   if (codexRequestId.startsWith('demo:')) return 'demo';
@@ -97,7 +107,7 @@ export const buildApprovalDetails = (
     cwd: thread?.cwd,
     source,
     category: classification.category,
-    risk: classification.risk,
+    risk: applyRiskFloor(classification.risk, `${approval.actionType} ${approval.summary}`),
     why: classification.why,
     impact: classification.impact,
     actionSummary: safeSummary,
