@@ -279,7 +279,8 @@ export class SessionRegistryAgent {
 
   private nextProjectId(baseName: string): string {
     const base = `auto_${this.slugify(baseName)}`;
-    const existing = new Set(this.listProjects().map((project) => project.id));
+    // Disabled projects keep their ids and names, so the proposal must avoid them too.
+    const existing = new Set(this.repository.listProjects(true).map((project) => project.id));
     if (!existing.has(base)) {
       return base;
     }
@@ -292,7 +293,7 @@ export class SessionRegistryAgent {
 
   private nextProjectName(baseName: string): string {
     const normalized = baseName.trim() || 'project';
-    const existing = new Set(this.listProjects().map((project) => project.name.toLowerCase()));
+    const existing = new Set(this.repository.listProjects(true).map((project) => project.name.toLowerCase()));
     if (!existing.has(normalized.toLowerCase())) {
       return normalized;
     }

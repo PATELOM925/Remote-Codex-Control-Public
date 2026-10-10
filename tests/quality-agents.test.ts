@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -12,6 +13,8 @@ import { MockAppServerClient } from '../src/adapters/codex/mockAppServerClient.j
 import { MockTelegramClient } from '../src/adapters/telegram/mockTelegramClient.js';
 import type { RccConfig } from '../src/config.js';
 import type { EventJournal } from '../src/event-journal/eventJournal.js';
+import { runMigrations } from '../src/db/migrations.js';
+import { RccRepository } from '../src/db/repositories.js';
 import { Logger } from '../src/logger.js';
 import { PolicyEngine } from '../src/policies/policyEngine.js';
 import { RccEventBus } from '../src/runtime/eventBus.js';
@@ -399,4 +402,49 @@ test('close() stops the heartbeat and ends the app-server process', async (t) =>
   client.close();
   t.mock.timers.tick(60_000);
   assert.equal(heartbeats.length, 1, 'no heartbeat may be emitted after close()');
+});
+
+const makeRepository = () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  runMigrations(db);
+  return new RccRepository(db);
+};
+
+test('a project name clash raises an error instead of deleting the existing project', () => {
+  const repository = makeRepository();
+  repository.insertProject({ id: 'project-a', name: 'app', rootPath: '/work/a', isEnabled: true });
+
+  assert.throws(
+    () => repository.insertProject({ id: 'project-b', name: 'app', rootPath: '/work/b', isEnabled: true }),
+    /UNIQUE constraint failed: projects\.name/,
+  );
+
+  assert.equal(repository.getProjectById('project-a')?.rootPath, '/work/a');
+});
+
+test('a proposed project name avoids the name of a disabled project', async () => {
+  const { daemon, baseDir } = await startDaemon(new MockAppServerClient());
+  try {
+    const cwd = path.join(baseDir, 'app');
+    fs.mkdirSync(cwd);
+    daemon.sessionRegistry.registerProject({
+      id: 'disabled-app',
+      name: 'app',
+      rootPath: path.join(baseDir, 'elsewhere'),
+      isEnabled: false,
+    });
+
+    const thread = daemon.sessionRegistry.ensureThreadForCodexThread({
+      codexThreadId: 'codex-app',
+      cwd,
+      status: 'idle',
+    });
+
+    const project = daemon.repository.getProjectById(thread.projectId);
+    assert.equal(project?.name, 'app-2');
+    assert.equal(daemon.repository.getProjectById('disabled-app')?.name, 'app');
+  } finally {
+    daemon.stop();
+  }
 });

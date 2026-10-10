@@ -136,9 +136,18 @@ export class RccRepository {
       createdAt: project.createdAt ?? nowIso(),
     };
 
+    // Upsert by id. A clash on the unique name raises an error and never deletes another project.
     this.db
       .prepare(
-        'INSERT OR REPLACE INTO projects (id, name, root_path, is_enabled, default_model, default_effort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        `INSERT INTO projects (id, name, root_path, is_enabled, default_model, default_effort, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           root_path = excluded.root_path,
+           is_enabled = excluded.is_enabled,
+           default_model = excluded.default_model,
+           default_effort = excluded.default_effort,
+           created_at = excluded.created_at`
       )
       .run(
         record.id,
@@ -153,10 +162,10 @@ export class RccRepository {
     return record;
   }
 
-  listProjects(): ProjectRecord[] {
+  listProjects(includeDisabled = false): ProjectRecord[] {
     const rows = this.db
       .prepare(
-        'SELECT id, name, root_path, is_enabled, default_model, default_effort, created_at FROM projects WHERE is_enabled = 1 ORDER BY name ASC'
+        `SELECT id, name, root_path, is_enabled, default_model, default_effort, created_at FROM projects ${includeDisabled ? '' : 'WHERE is_enabled = 1'} ORDER BY name ASC`
       )
       .all() as Array<Record<string, unknown>>;
 
