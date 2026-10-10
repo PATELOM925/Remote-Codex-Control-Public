@@ -84,9 +84,6 @@ export class FileIntakeAgent {
       ),
     );
 
-    await this.telegramClient.downloadFile(input.attachment.fileId, localPath);
-    this.repository.updateAttachmentStatus(attachmentId, 'downloaded', localPath);
-
     const pathDecision = this.policyEngine.evaluateAttachmentPath(localPath, threadWorkspace, project.rootPath);
     this.publish(
       this.journal.createEnvelope(
@@ -109,6 +106,8 @@ export class FileIntakeAgent {
       throw new Error(pathDecision.reason);
     }
 
+    await this.telegramClient.downloadFile(input.attachment.fileId, localPath);
+    this.repository.updateAttachmentStatus(attachmentId, 'downloaded', localPath);
     this.repository.updateAttachmentStatus(attachmentId, 'materialized', localPath);
     this.publish(
       this.journal.createEnvelope(
@@ -216,9 +215,6 @@ export class FileIntakeAgent {
       ),
     );
 
-    fs.writeFileSync(localPath, input.bytes);
-    this.repository.updateAttachmentStatus(attachmentId, 'downloaded', localPath);
-
     const pathDecision = this.policyEngine.evaluateAttachmentPath(localPath, threadWorkspace, project.rootPath);
     this.publish(
       this.journal.createEnvelope(
@@ -241,6 +237,8 @@ export class FileIntakeAgent {
       throw new Error(pathDecision.reason);
     }
 
+    fs.writeFileSync(localPath, input.bytes);
+    this.repository.updateAttachmentStatus(attachmentId, 'downloaded', localPath);
     this.repository.updateAttachmentStatus(attachmentId, 'materialized', localPath);
     this.publish(
       this.journal.createEnvelope(
